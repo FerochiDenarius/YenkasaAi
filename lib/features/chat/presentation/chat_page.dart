@@ -19,20 +19,38 @@ class ChatPage extends ConsumerStatefulWidget {
 }
 
 class _ChatPageState extends ConsumerState<ChatPage> {
+  static const double _scrollBottomThreshold = 96;
+
   late final TextEditingController _controller;
   final ScrollController _scrollController = ScrollController();
+  bool _stickToBottom = true;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: promptSuggestions.first);
+    _scrollController.addListener(_handleScroll);
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_handleScroll);
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final distanceToBottom = position.maxScrollExtent - position.pixels;
+    _stickToBottom = distanceToBottom <= _scrollBottomThreshold;
+  }
+
+  void _scrollToBottomIfNeeded() {
+    if (!_scrollController.hasClients || !_stickToBottom) return;
+    final position = _scrollController.position;
+    _scrollController.jumpTo(position.maxScrollExtent);
   }
 
   @override
@@ -46,13 +64,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       }),
       (_, __) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollController.hasClients) {
-            _scrollController.animateTo(
-              _scrollController.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOut,
-            );
-          }
+          _scrollToBottomIfNeeded();
         });
       },
     );
@@ -75,6 +87,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           if (state.isSending) return;
           final text = _controller.text.trim();
           if (text.isEmpty) return;
+          _stickToBottom = true;
           controller.sendMessage(text);
           _controller.clear();
         }
