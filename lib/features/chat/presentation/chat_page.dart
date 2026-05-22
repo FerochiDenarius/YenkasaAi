@@ -79,10 +79,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         final wide = constraints.maxWidth > 1180;
         final compactPage = constraints.maxWidth < 920;
         final compactComposer = constraints.maxWidth < 760;
-        final inlineInsights = !wide;
+        final inlineInsights = !wide && !compactPage;
         final quickPrompts = state.suggestedFollowUps.isNotEmpty
             ? state.suggestedFollowUps
             : (compactComposer ? suggestions.take(2).toList() : suggestions);
+        final hasInsights =
+            state.answerCards.isNotEmpty || state.sources.isNotEmpty;
         void submitQuestion() {
           if (state.isSending) return;
           final text = _controller.text.trim();
@@ -90,6 +92,58 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           _stickToBottom = true;
           controller.sendMessage(text);
           _controller.clear();
+        }
+
+        void openInsightsSheet() {
+          if (!hasInsights) return;
+          showModalBottomSheet<void>(
+            context: context,
+            isScrollControlled: true,
+            useSafeArea: true,
+            backgroundColor: Colors.transparent,
+            builder: (context) {
+              final theme = Theme.of(context);
+              return FractionallySizedBox(
+                heightFactor: 0.88,
+                child: GlassCard(
+                  strong: true,
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Result summary',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: _InlineInsightsSection(
+                            answerCards: state.answerCards,
+                            sources: state.sources,
+                            compact: false,
+                            showTitle: false,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
         }
 
         final chatPanel = GlassCard(
@@ -188,21 +242,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     ),
                   ],
                 ),
-              if (quickPrompts.isNotEmpty) ...[
-                SizedBox(height: compactComposer ? 10 : 14),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: quickPrompts
-                      .map(
-                        (prompt) => ActionChip(
-                          label: Text(prompt),
-                          onPressed: () => _controller.text = prompt,
-                        ),
-                      )
-                      .toList(),
-                ),
-              ],
             ],
           ),
         );
@@ -299,6 +338,26 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   ),
                 ],
               ),
+            if (quickPrompts.isNotEmpty) ...[
+              SizedBox(height: compactPage ? 12 : 16),
+              _PromptSuggestionsStrip(
+                prompts: quickPrompts,
+                onSelect: (prompt) => _controller.text = prompt,
+              ),
+            ],
+            if (compactPage && hasInsights) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: openInsightsSheet,
+                  icon: const Icon(Icons.notes_rounded),
+                  label: Text(
+                    'View result summary (${state.answerCards.length + state.sources.length})',
+                  ),
+                ),
+              ),
+            ],
             SizedBox(height: compactPage ? 12 : 20),
             Expanded(
               child: wide
@@ -321,6 +380,49 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           ],
         );
       },
+    );
+  }
+}
+
+class _PromptSuggestionsStrip extends StatelessWidget {
+  const _PromptSuggestionsStrip({
+    required this.prompts,
+    required this.onSelect,
+  });
+
+  final List<String> prompts;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Suggested questions',
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final prompt in prompts) ...[
+                  ActionChip(
+                    label: Text(prompt),
+                    onPressed: () => onSelect(prompt),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -396,11 +498,13 @@ class _InlineInsightsSection extends StatelessWidget {
     required this.answerCards,
     required this.sources,
     this.compact = false,
+    this.showTitle = true,
   });
 
   final List<AnswerCardModel> answerCards;
   final List<SourceChunkModel> sources;
   final bool compact;
+  final bool showTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -411,13 +515,15 @@ class _InlineInsightsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Result summary',
-          style: Theme.of(
-            context,
-          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-        ),
-        SizedBox(height: compact ? 10 : 14),
+        if (showTitle) ...[
+          Text(
+            'Result summary',
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          SizedBox(height: compact ? 10 : 14),
+        ],
         for (final card in answerCards.take(compact ? 2 : 3)) ...[
           _AnswerCard(
             title: card.title,
