@@ -1,14 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/metric_card.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/status_chip.dart';
 import '../../../services/mock_dashboard_data.dart';
 import '../models/chat_message.dart';
-import '../models/chat_models.dart';
 import 'chat_controller.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
@@ -23,17 +25,31 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   late final TextEditingController _controller;
   final ScrollController _scrollController = ScrollController();
+  ProviderSubscription<(int, int, bool)>? _messageStreamSubscription;
+  Timer? _autoScrollTimer;
   bool _stickToBottom = true;
+  bool _isAutoScrolling = false;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: promptSuggestions.first);
     _scrollController.addListener(_handleScroll);
+    _messageStreamSubscription = ref.listenManual<(int, int, bool)>(
+      chatControllerProvider.select((state) {
+        final lastMessageLength = state.messages.isEmpty
+            ? 0
+            : state.messages.last.content.length;
+        return (state.messages.length, lastMessageLength, state.isSending);
+      }),
+      (_, __) => _queueAutoScroll(),
+    );
   }
 
   @override
   void dispose() {
+    _autoScrollTimer?.cancel();
+    _messageStreamSubscription?.close();
     _scrollController.removeListener(_handleScroll);
     _controller.dispose();
     _scrollController.dispose();
@@ -42,33 +58,60 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   void _handleScroll() {
     if (!_scrollController.hasClients) return;
+
     final position = _scrollController.position;
     final distanceToBottom = position.maxScrollExtent - position.pixels;
-    _stickToBottom = distanceToBottom <= _scrollBottomThreshold;
+    final nearBottom = distanceToBottom <= _scrollBottomThreshold;
+
+    if (nearBottom) {
+      _stickToBottom = true;
+    }
+
+    if (distanceToBottom > 240) {
+      _stickToBottom = false;
+    }
   }
 
-  void _scrollToBottomIfNeeded() {
-    if (!_scrollController.hasClients || !_stickToBottom) return;
+  void _queueAutoScroll() {
+    if (!_stickToBottom || !mounted) return;
+    if (_autoScrollTimer?.isActive ?? false) return;
+
+    _autoScrollTimer = Timer(const Duration(milliseconds: 120), () {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottomIfNeeded();
+      });
+    });
+  }
+
+  Future<void> _scrollToBottomIfNeeded() async {
+    if (!_scrollController.hasClients) return;
+    if (!_stickToBottom) return;
+    if (_isAutoScrolling) return;
+
     final position = _scrollController.position;
-    _scrollController.jumpTo(position.maxScrollExtent);
+    if (!position.hasContentDimensions) return;
+
+    final target = position.maxScrollExtent;
+    if ((target - position.pixels).abs() < 1) return;
+
+    _isAutoScrolling = true;
+
+    try {
+      await _scrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    } catch (_) {
+      // Ignore interrupted scroll animations when layout changes mid-stream.
+    } finally {
+      _isAutoScrolling = false;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<(int, int, bool)>(
-      chatControllerProvider.select((state) {
-        final lastMessageLength = state.messages.isEmpty
-            ? 0
-            : state.messages.last.content.length;
-        return (state.messages.length, lastMessageLength, state.isSending);
-      }),
-      (_, __) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollToBottomIfNeeded();
-        });
-      },
-    );
-
     final state = ref.watch(chatControllerProvider);
     final controller = ref.read(chatControllerProvider.notifier);
     final isPublic = state.audience == 'public';
@@ -76,15 +119,16 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = constraints.maxWidth > 1180;
         final compactPage = constraints.maxWidth < 920;
         final compactComposer = constraints.maxWidth < 760;
-        final inlineInsights = !wide && !compactPage;
-        final quickPrompts = state.suggestedFollowUps.isNotEmpty
+        final hasConversation = state.messages.any(
+          (message) => message.role == ChatRole.user,
+        );
+        final quickPrompts = hasConversation
+            ? const <String>[]
+            : state.suggestedFollowUps.isNotEmpty
             ? state.suggestedFollowUps
             : (compactComposer ? suggestions.take(2).toList() : suggestions);
-        final hasInsights =
-            state.answerCards.isNotEmpty || state.sources.isNotEmpty;
         void submitQuestion() {
           if (state.isSending) return;
           final text = _controller.text.trim();
@@ -94,55 +138,60 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           _controller.clear();
         }
 
-        void openInsightsSheet() {
-          if (!hasInsights) return;
-          showModalBottomSheet<void>(
-            context: context,
-            isScrollControlled: true,
-            useSafeArea: true,
-            backgroundColor: Colors.transparent,
-            builder: (context) {
-              final theme = Theme.of(context);
-              return FractionallySizedBox(
-                heightFactor: 0.88,
-                child: GlassCard(
-                  strong: true,
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Result summary',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.close_rounded),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          child: _InlineInsightsSection(
-                            answerCards: state.answerCards,
-                            sources: state.sources,
-                            compact: false,
-                            showTitle: false,
-                          ),
+        if (compactPage) {
+          return Stack(
+            children: [
+              const Positioned.fill(
+                child: IgnorePointer(child: _AmbientGlow()),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (state.errorMessage != null) ...[
+                    _ErrorBanner(
+                      message: state.errorMessage!,
+                      onRetry: controller.retryLastQuestion,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (hasConversation)
+                    Expanded(
+                      child: ListView.separated(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.fromLTRB(2, 24, 2, 12),
+                        physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
                         ),
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        itemCount:
+                            state.messages.length + (state.isSending ? 1 : 0),
+                        separatorBuilder: (_, __) => const SizedBox(height: 14),
+                        itemBuilder: (context, index) {
+                          if (index >= state.messages.length) {
+                            return const _ThinkingBubble();
+                          }
+                          return _MessageBubble(
+                            message: state.messages[index],
+                            compact: true,
+                          );
+                        },
                       ),
-                    ],
+                    )
+                  else
+                    const Spacer(),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12, bottom: 8),
+                    child: _MinimalComposer(
+                      controller: _controller,
+                      hintText: 'Ask anything about Yenkasa...',
+                      onSubmit: submitQuestion,
+                      isSending: state.isSending,
+                    ),
                   ),
-                ),
-              );
-            },
+                ],
+              ),
+            ],
           );
         }
 
@@ -162,6 +211,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               Expanded(
                 child: ListView.separated(
                   controller: _scrollController,
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   itemCount: state.messages.length + (state.isSending ? 1 : 0),
                   separatorBuilder: (_, __) => const SizedBox(height: 14),
                   itemBuilder: (context, index) {
@@ -175,14 +229,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   },
                 ),
               ),
-              if (inlineInsights) ...[
-                SizedBox(height: compactComposer ? 14 : 18),
-                _InlineInsightsSection(
-                  answerCards: state.answerCards,
-                  sources: state.sources,
-                  compact: compactComposer,
-                ),
-              ],
               SizedBox(height: compactComposer ? 14 : 18),
               TextField(
                 controller: _controller,
@@ -248,22 +294,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (compactPage)
-              _CompactChatHeader(
-                title: isPublic
-                    ? 'Ask about Yenkasa'
-                    : 'Ask the engineering copilot',
-              )
-            else
-              SectionHeader(
-                eyebrow: 'AI Chat Dashboard',
-                title: isPublic
-                    ? 'Platform answers grounded on Yenkasa knowledge'
-                    : 'Engineering answers grounded on Yenkasa architecture',
-                description: isPublic
-                    ? 'This mode explains product concepts naturally, keeps moderation-sensitive topics safe, and stays accessible for users.'
-                    : 'This mode stays focused on distributed systems, livestream scale, moderation workflows, mobile optimization, and AI infrastructure decisions.',
-              ),
+            SectionHeader(
+              eyebrow: 'AI Chat Dashboard',
+              title: isPublic
+                  ? 'Platform answers grounded on Yenkasa knowledge'
+                  : 'Engineering answers grounded on Yenkasa architecture',
+              description: isPublic
+                  ? 'This mode explains product concepts naturally, keeps moderation-sensitive topics safe, and stays accessible for users.'
+                  : 'This mode stays focused on distributed systems, livestream scale, moderation workflows, mobile optimization, and AI infrastructure decisions.',
+            ),
             SizedBox(height: compactPage ? 14 : 20),
             Wrap(
               spacing: 10,
@@ -320,23 +359,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     ),
                   ),
                 ],
-              )
-            else if (state.timings.isNotEmpty)
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _CompactMetricChip(
-                    label: 'Retrieval',
-                    value:
-                        '${state.timings['retrieval_ms'] ?? state.timings['retrievalMs'] ?? 412}ms',
-                  ),
-                  _CompactMetricChip(
-                    label: 'Latency',
-                    value:
-                        '${state.timings['total_ms'] ?? state.timings['totalMs'] ?? 1900}ms',
-                  ),
-                ],
               ),
             if (quickPrompts.isNotEmpty) ...[
               SizedBox(height: compactPage ? 12 : 16),
@@ -345,38 +367,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 onSelect: (prompt) => _controller.text = prompt,
               ),
             ],
-            if (compactPage && hasInsights) ...[
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: openInsightsSheet,
-                  icon: const Icon(Icons.notes_rounded),
-                  label: Text(
-                    'View result summary (${state.answerCards.length + state.sources.length})',
-                  ),
-                ),
-              ),
-            ],
             SizedBox(height: compactPage ? 12 : 20),
-            Expanded(
-              child: wide
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(flex: 14, child: chatPanel),
-                        const SizedBox(width: 18),
-                        SizedBox(
-                          width: 360,
-                          child: _SidebarInsightsSection(
-                            answerCards: state.answerCards,
-                            sources: state.sources,
-                          ),
-                        ),
-                      ],
-                    )
-                  : chatPanel,
-            ),
+            Expanded(child: chatPanel),
           ],
         );
       },
@@ -427,30 +419,35 @@ class _PromptSuggestionsStrip extends StatelessWidget {
   }
 }
 
-class _CompactChatHeader extends StatelessWidget {
-  const _CompactChatHeader({required this.title});
-
-  final String title;
+class _AmbientGlow extends StatelessWidget {
+  const _AmbientGlow();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'AI CHAT',
-          style: theme.textTheme.labelMedium?.copyWith(
-            letterSpacing: 1.4,
-            fontWeight: FontWeight.w700,
-            color: theme.colorScheme.primary,
+    return Stack(
+      children: const [
+        Positioned(
+          top: 56,
+          left: -110,
+          child: _GlowOrb(
+            diameter: 250,
+            colors: [Color(0x337C3AED), Color(0x00000000)],
           ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          title,
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w700,
+        Positioned(
+          top: 120,
+          right: -90,
+          child: _GlowOrb(
+            diameter: 210,
+            colors: [Color(0x223B82F6), Color(0x00000000)],
+          ),
+        ),
+        Positioned(
+          bottom: -120,
+          right: -40,
+          child: _GlowOrb(
+            diameter: 260,
+            colors: [Color(0x1F7C3AED), Color(0x00000000)],
           ),
         ),
       ],
@@ -458,165 +455,125 @@ class _CompactChatHeader extends StatelessWidget {
   }
 }
 
-class _CompactMetricChip extends StatelessWidget {
-  const _CompactMetricChip({required this.label, required this.value});
+class _GlowOrb extends StatelessWidget {
+  const _GlowOrb({required this.diameter, required this.colors});
 
-  final String label;
-  final String value;
+  final double diameter;
+  final List<Color> colors;
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
-      strong: true,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: RichText(
-        text: TextSpan(
-          style: Theme.of(context).textTheme.bodySmall,
-          children: [
-            TextSpan(
-              text: '$label  ',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            TextSpan(
-              text: value,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
+    return Container(
+      width: diameter,
+      height: diameter,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(colors: colors),
       ),
     );
   }
 }
 
-class _InlineInsightsSection extends StatelessWidget {
-  const _InlineInsightsSection({
-    required this.answerCards,
-    required this.sources,
-    this.compact = false,
-    this.showTitle = true,
+class _MinimalComposer extends StatelessWidget {
+  const _MinimalComposer({
+    required this.controller,
+    required this.hintText,
+    required this.onSubmit,
+    required this.isSending,
   });
 
-  final List<AnswerCardModel> answerCards;
-  final List<SourceChunkModel> sources;
-  final bool compact;
-  final bool showTitle;
+  final TextEditingController controller;
+  final String hintText;
+  final VoidCallback onSubmit;
+  final bool isSending;
 
   @override
   Widget build(BuildContext context) {
-    if (answerCards.isEmpty && sources.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (showTitle) ...[
-          Text(
-            'Result summary',
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
           ),
-          SizedBox(height: compact ? 10 : 14),
         ],
-        for (final card in answerCards.take(compact ? 2 : 3)) ...[
-          _AnswerCard(
-            title: card.title,
-            category: card.category,
-            summary: card.summary,
-            compact: compact,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
+            child: IconButton(
+              onPressed: () => controller.clear(),
+              icon: const Icon(Icons.add_rounded, color: Colors.white),
+            ),
           ),
-          SizedBox(height: compact ? 10 : 12),
-        ],
-        if (sources.isNotEmpty) ...[
-          Text(
-            'Sources',
-            style: Theme.of(
-              context,
-            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          SizedBox(height: compact ? 10 : 12),
-          for (final source in sources.take(compact ? 3 : 4)) ...[
-            _SourceCard(source: source, compact: compact),
-            SizedBox(height: compact ? 10 : 12),
-          ],
-        ],
-      ],
-    );
-  }
-}
-
-class _SidebarInsightsSection extends StatelessWidget {
-  const _SidebarInsightsSection({
-    required this.answerCards,
-    required this.sources,
-  });
-
-  final List<AnswerCardModel> answerCards;
-  final List<SourceChunkModel> sources;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        GlassCard(
-          strong: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Answer cards',
-                style: Theme.of(
-                  context,
-                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              minLines: 1,
+              maxLines: 4,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) {
+                if (!isSending) onSubmit();
+              },
+              decoration: InputDecoration(
+                hintText: hintText,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 0,
+                  vertical: 12,
+                ),
               ),
-              const SizedBox(height: 16),
-              if (answerCards.isEmpty)
-                Text(
-                  'High-signal answer cards appear here after the first query so users can scan the main points quickly.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              for (final card in answerCards) ...[
-                _AnswerCard(
-                  title: card.title,
-                  category: card.category,
-                  summary: card.summary,
-                ),
-                const SizedBox(height: 12),
-              ],
-            ],
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-        GlassCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Sources used',
-                style: Theme.of(
-                  context,
-                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+          const SizedBox(width: 12),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: isSending
+                  ? null
+                  : const LinearGradient(
+                      colors: [Color(0xFF7C3AED), Color(0xFF4F46E5)],
+                    ),
+              color: isSending ? Colors.white.withValues(alpha: 0.08) : null,
+              shape: BoxShape.circle,
+              boxShadow: isSending
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: AiPalette.violet.withValues(alpha: 0.32),
+                        blurRadius: 24,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+            ),
+            child: IconButton(
+              onPressed: isSending ? null : onSubmit,
+              icon: Icon(
+                isSending
+                    ? Icons.hourglass_top_rounded
+                    : Icons.arrow_upward_rounded,
+                color: Colors.white,
               ),
-              const SizedBox(height: 16),
-              if (sources.isEmpty)
-                Text(
-                  'Retrieved citations, chunk scores, and source excerpts show here once a response lands.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              for (final source in sources.take(5)) ...[
-                _SourceCard(source: source),
-                const SizedBox(height: 12),
-              ],
-            ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -636,68 +593,81 @@ class _MessageBubble extends StatelessWidget {
     final gradient = isAssistant
         ? null
         : const LinearGradient(colors: [Color(0xFF5B21B6), Color(0xFF3B82F6)]);
-    return Align(
-      alignment: alignment,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 820),
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: gradient,
-            borderRadius: BorderRadius.circular(24),
-            color: gradient == null ? null : null,
-          ),
-          child: GlassCard(
-            strong: isAssistant,
-            padding: EdgeInsets.all(compact ? 14 : 18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isAssistant
-                          ? Icons.auto_awesome_rounded
-                          : Icons.person_rounded,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      isAssistant ? 'YenkasaAI' : 'You',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (message.isStreaming) ...[
-                      const SizedBox(width: 10),
-                      const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ],
-                  ],
+    final bubbleContent = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isAssistant ? Icons.auto_awesome_rounded : Icons.person_rounded,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              isAssistant ? 'YenkasaAI' : 'You',
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            if (message.isStreaming) ...[
+              const SizedBox(width: 10),
+              const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (isAssistant && message.isStreaming)
+          SelectableText(
+            message.content.isEmpty ? '...' : message.content,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(height: 1.65),
+          )
+        else if (isAssistant)
+          MarkdownBody(
+            data: message.content.isEmpty ? '...' : message.content,
+            selectable: true,
+            softLineBreak: true,
+            styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context))
+                .copyWith(
+                  p: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(height: 1.65),
                 ),
-                const SizedBox(height: 12),
-                if (isAssistant)
-                  MarkdownBody(
-                    data: message.content.isEmpty ? '...' : message.content,
-                    selectable: true,
-                    styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context))
-                        .copyWith(
-                          p: Theme.of(
-                            context,
-                          ).textTheme.bodyLarge?.copyWith(height: 1.65),
-                        ),
-                  )
-                else
-                  Text(
-                    message.content,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyLarge?.copyWith(height: 1.65),
-                  ),
-              ],
+          )
+        else
+          SelectableText(
+            message.content,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(height: 1.65),
+          ),
+      ],
+    );
+    return RepaintBoundary(
+      child: Align(
+        alignment: alignment,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 820),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: gradient,
+              borderRadius: BorderRadius.circular(compact ? 22 : 24),
+              color: gradient == null
+                  ? Colors.white.withValues(alpha: compact ? 0.045 : 0.06)
+                  : null,
+              border: Border.all(
+                color: Colors.white.withValues(alpha: compact ? 0.08 : 0.1),
+              ),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(compact ? 14 : 18),
+              child: bubbleContent,
             ),
           ),
         ),
@@ -711,9 +681,15 @@ class _ThinkingBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Align(
+    return Align(
       alignment: Alignment.centerLeft,
-      child: GlassCard(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -726,100 +702,6 @@ class _ThinkingBubble extends StatelessWidget {
             Text('YenkasaAI is thinking...'),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _AnswerCard extends StatelessWidget {
-  const _AnswerCard({
-    required this.title,
-    required this.category,
-    required this.summary,
-    this.compact = false,
-  });
-
-  final String title;
-  final String category;
-  final String summary;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          StatusChip(label: category, tone: StatusTone.info, compact: compact),
-          SizedBox(height: compact ? 10 : 12),
-          Text(
-            title,
-            maxLines: compact ? 2 : null,
-            overflow: compact ? TextOverflow.ellipsis : TextOverflow.visible,
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          SizedBox(height: compact ? 6 : 8),
-          Text(
-            summary,
-            maxLines: compact ? 3 : null,
-            overflow: compact ? TextOverflow.ellipsis : TextOverflow.visible,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(height: 1.55),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SourceCard extends StatelessWidget {
-  const _SourceCard({required this.source, this.compact = false});
-
-  final SourceChunkModel source;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  source.title,
-                  maxLines: compact ? 2 : null,
-                  overflow: compact
-                      ? TextOverflow.ellipsis
-                      : TextOverflow.visible,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                ),
-              ),
-              StatusChip(
-                label: '${(source.score * 100).toStringAsFixed(0)}%',
-                tone: StatusTone.success,
-                compact: compact,
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(source.area, style: Theme.of(context).textTheme.labelMedium),
-          const SizedBox(height: 8),
-          Text(
-            source.excerpt,
-            maxLines: compact ? 3 : null,
-            overflow: compact ? TextOverflow.ellipsis : TextOverflow.visible,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(height: 1.55),
-          ),
-        ],
       ),
     );
   }
