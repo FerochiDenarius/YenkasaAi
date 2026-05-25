@@ -101,12 +101,18 @@ class ChatController extends StateNotifier<ChatState> {
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       role: ChatRole.user,
       content: trimmed,
+      createdAt: DateTime.now(),
+      audience: state.audience,
+      question: trimmed,
     );
     final placeholder = ChatMessage(
       id: '${userMessage.id}-assistant',
       role: ChatRole.assistant,
       content: '',
       isStreaming: true,
+      createdAt: DateTime.now(),
+      audience: state.audience,
+      question: trimmed,
     );
 
     final baseMessages = [...state.messages, userMessage, placeholder];
@@ -142,6 +148,10 @@ class ChatController extends StateNotifier<ChatState> {
           updatedMessages[lastIndex] = updatedMessages[lastIndex].copyWith(
             content: frame.partialAnswer,
             isStreaming: !frame.done,
+            provider: frame.response?.provider ?? updatedMessages[lastIndex].provider,
+            model: frame.response?.model ?? updatedMessages[lastIndex].model,
+            audience: frame.response?.audience ?? updatedMessages[lastIndex].audience,
+            question: trimmed,
           );
         }
         state = state.copyWith(
@@ -178,5 +188,13 @@ class ChatController extends StateNotifier<ChatState> {
     final lastQuestion = state.lastQuestion;
     if (lastQuestion == null || state.isSending) return;
     await sendMessage(lastQuestion);
+  }
+
+  Future<void> continueLastAnswer() async {
+    final lastQuestion = state.lastQuestion;
+    if (lastQuestion == null || state.isSending) return;
+    await sendMessage(
+      'Continue the previous answer without repeating earlier content. Preserve the same context and keep the reply focused on the last question: $lastQuestion',
+    );
   }
 }

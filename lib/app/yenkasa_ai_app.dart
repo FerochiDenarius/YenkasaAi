@@ -15,7 +15,7 @@ class YenkasaAiApp extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp.router(
-      title: 'YenkasaAI',
+      title: 'YenkasaAi',
       debugShowCheckedModeBanner: false,
       themeMode: themeMode,
       theme: AppTheme.light(),

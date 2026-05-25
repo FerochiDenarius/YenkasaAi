@@ -34,6 +34,11 @@ const navItems = <NavDestinationItem>[
     icon: Icons.dataset_linked_outlined,
   ),
   NavDestinationItem(
+    route: '/saved-responses',
+    label: 'Saved Responses',
+    icon: Icons.bookmark_outline_rounded,
+  ),
+  NavDestinationItem(
     route: '/moderation',
     label: 'Moderation',
     icon: Icons.gpp_good_outlined,

@@ -1,5 +1,5 @@
 class AppConfig {
-  static const String appName = 'YenkasaAI';
+  static const String appName = 'YenkasaAi';
   static const String _productionApiBaseUrl =
       'https://yenkasa-ai-496173204476.europe-west1.run.app';
   static const String localDebugApiBaseUrl = 'http://127.0.0.1:8008/api/ai';

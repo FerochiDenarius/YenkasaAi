@@ -1,7 +1,7 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
@@ -10,6 +10,7 @@ import '../../../core/widgets/metric_card.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/status_chip.dart';
 import '../../../services/mock_dashboard_data.dart';
+import '../actions/ai_message_actions_layer.dart';
 import '../models/chat_message.dart';
 import 'chat_controller.dart';
 
@@ -60,7 +61,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     if (!_scrollController.hasClients) return;
 
     final position = _scrollController.position;
-    final distanceToBottom = position.maxScrollExtent - position.pixels;
+    final distanceToBottom = position.pixels - position.minScrollExtent;
     final nearBottom = distanceToBottom <= _scrollBottomThreshold;
 
     if (nearBottom) {
@@ -92,7 +93,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final position = _scrollController.position;
     if (!position.hasContentDimensions) return;
 
-    final target = position.maxScrollExtent;
+    final target = position.minScrollExtent;
     if ((target - position.pixels).abs() < 1) return;
 
     _isAutoScrolling = true;
@@ -154,32 +155,18 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     ),
                     const SizedBox(height: 16),
                   ],
-                  if (hasConversation)
-                    Expanded(
-                      child: ListView.separated(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(2, 24, 2, 12),
-                        physics: const BouncingScrollPhysics(
-                          parent: AlwaysScrollableScrollPhysics(),
-                        ),
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        itemCount:
-                            state.messages.length + (state.isSending ? 1 : 0),
-                        separatorBuilder: (_, __) => const SizedBox(height: 14),
-                        itemBuilder: (context, index) {
-                          if (index >= state.messages.length) {
-                            return const _ThinkingBubble();
-                          }
-                          return _MessageBubble(
-                            message: state.messages[index],
-                            compact: true,
-                          );
-                        },
-                      ),
-                    )
-                  else
-                    const Spacer(),
+                  Expanded(
+                    child: _ChatMessageList(
+                      controller: _scrollController,
+                      messages: state.messages,
+                      isSending: state.isSending,
+                      compact: true,
+                      hasConversation: hasConversation,
+                      onRegenerate: controller.retryLastQuestion,
+                      onContinueGeneration: controller.continueLastAnswer,
+                      onRetryFailedResponse: controller.retryLastQuestion,
+                    ),
+                  ),
                   Padding(
                     padding: const EdgeInsets.only(top: 12, bottom: 8),
                     child: _MinimalComposer(
@@ -209,24 +196,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 const SizedBox(height: 14),
               ],
               Expanded(
-                child: ListView.separated(
+                child: _ChatMessageList(
                   controller: _scrollController,
-                  physics: const BouncingScrollPhysics(
-                    parent: AlwaysScrollableScrollPhysics(),
-                  ),
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  itemCount: state.messages.length + (state.isSending ? 1 : 0),
-                  separatorBuilder: (_, __) => const SizedBox(height: 14),
-                  itemBuilder: (context, index) {
-                    if (index >= state.messages.length) {
-                      return const _ThinkingBubble();
-                    }
-                    return _MessageBubble(
-                      message: state.messages[index],
-                      compact: compactComposer,
-                    );
-                  },
+                  messages: state.messages,
+                  isSending: state.isSending,
+                  compact: compactComposer,
+                  hasConversation: hasConversation,
+                  onRegenerate: controller.retryLastQuestion,
+                  onContinueGeneration: controller.continueLastAnswer,
+                  onRetryFailedResponse: controller.retryLastQuestion,
                 ),
               ),
               SizedBox(height: compactComposer ? 14 : 18),
@@ -263,18 +241,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   ),
                 )
               else
-                Row(
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     const StatusChip(
                       label: 'Voice input ready next',
                       tone: StatusTone.info,
                     ),
-                    const SizedBox(width: 10),
                     const StatusChip(
                       label: 'History sync planned',
                       tone: StatusTone.neutral,
                     ),
-                    const Spacer(),
                     FilledButton.icon(
                       onPressed: state.isSending ? null : submitQuestion,
                       icon: Icon(
@@ -399,22 +378,102 @@ class _PromptSuggestionsStrip extends StatelessWidget {
             ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final prompt in prompts) ...[
-                  ActionChip(
-                    label: Text(prompt),
-                    onPressed: () => onSelect(prompt),
-                  ),
-                  const SizedBox(width: 10),
-                ],
-              ],
-            ),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final prompt in prompts)
+                ActionChip(
+                  label: Text(prompt),
+                  onPressed: () => onSelect(prompt),
+                ),
+            ],
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ChatMessageList extends StatelessWidget {
+  const _ChatMessageList({
+    required this.controller,
+    required this.messages,
+    required this.isSending,
+    required this.compact,
+    required this.hasConversation,
+    required this.onRegenerate,
+    required this.onContinueGeneration,
+    required this.onRetryFailedResponse,
+  });
+
+  final ScrollController controller;
+  final List<ChatMessage> messages;
+  final bool isSending;
+  final bool compact;
+  final bool hasConversation;
+  final VoidCallback onRegenerate;
+  final VoidCallback onContinueGeneration;
+  final VoidCallback onRetryFailedResponse;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!hasConversation && !isSending) {
+      return Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: math.min(MediaQuery.sizeOf(context).width * 0.92, 560),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              'Start a conversation with YenkasaAI. Responses will expand naturally, wrap cleanly, and stay scrollable on smaller screens.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.white.withValues(alpha: 0.68),
+                height: 1.6,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final itemCount = messages.length + (isSending ? 1 : 0);
+
+    return ListView.builder(
+      controller: controller,
+      reverse: true,
+      padding: const EdgeInsets.fromLTRB(2, 24, 2, 12),
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      itemCount: itemCount,
+      itemBuilder: (context, index) {
+        final hasThinkingBubble = isSending && index == 0;
+        if (hasThinkingBubble) {
+          return const Padding(
+            padding: EdgeInsets.only(bottom: 14),
+            child: _ThinkingBubble(),
+          );
+        }
+
+        final messageIndex =
+            messages.length - 1 - (index - (isSending ? 1 : 0));
+        final isLastVisibleItem = index == itemCount - 1;
+
+        return Padding(
+          padding: EdgeInsets.only(bottom: isLastVisibleItem ? 0 : 14),
+          child: AiMessageActionsLayer(
+            message: messages[messageIndex],
+            compact: compact,
+            onRegenerate: onRegenerate,
+            onContinueGeneration: onContinueGeneration,
+            onRetryFailedResponse: onRetryFailedResponse,
+          ),
+        );
+      },
     );
   }
 }
@@ -573,104 +632,6 @@ class _MinimalComposer extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message, this.compact = false});
-
-  final ChatMessage message;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final isAssistant = message.role == ChatRole.assistant;
-    final alignment = isAssistant
-        ? Alignment.centerLeft
-        : Alignment.centerRight;
-    final gradient = isAssistant
-        ? null
-        : const LinearGradient(colors: [Color(0xFF5B21B6), Color(0xFF3B82F6)]);
-    final bubbleContent = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isAssistant ? Icons.auto_awesome_rounded : Icons.person_rounded,
-              size: 18,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              isAssistant ? 'YenkasaAI' : 'You',
-              style: Theme.of(
-                context,
-              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            if (message.isStreaming) ...[
-              const SizedBox(width: 10),
-              const SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (isAssistant && message.isStreaming)
-          SelectableText(
-            message.content.isEmpty ? '...' : message.content,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyLarge?.copyWith(height: 1.65),
-          )
-        else if (isAssistant)
-          MarkdownBody(
-            data: message.content.isEmpty ? '...' : message.content,
-            selectable: true,
-            softLineBreak: true,
-            styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context))
-                .copyWith(
-                  p: Theme.of(
-                    context,
-                  ).textTheme.bodyLarge?.copyWith(height: 1.65),
-                ),
-          )
-        else
-          SelectableText(
-            message.content,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyLarge?.copyWith(height: 1.65),
-          ),
-      ],
-    );
-    return RepaintBoundary(
-      child: Align(
-        alignment: alignment,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 820),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: gradient,
-              borderRadius: BorderRadius.circular(compact ? 22 : 24),
-              color: gradient == null
-                  ? Colors.white.withValues(alpha: compact ? 0.045 : 0.06)
-                  : null,
-              border: Border.all(
-                color: Colors.white.withValues(alpha: compact ? 0.08 : 0.1),
-              ),
-            ),
-            child: Padding(
-              padding: EdgeInsets.all(compact ? 14 : 18),
-              child: bubbleContent,
-            ),
-          ),
-        ),
       ),
     );
   }

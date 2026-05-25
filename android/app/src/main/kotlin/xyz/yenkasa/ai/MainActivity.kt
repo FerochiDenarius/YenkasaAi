@@ -1,4 +1,4 @@
-package com.example.yenkasa_ai_flutter
+package xyz.yenkasa.ai
 
 import io.flutter.embedding.android.FlutterActivity
 
