@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/widgets/app_logo.dart';
 import '../../../../core/widgets/glass_card.dart';
-import '../../controllers/auth_controller.dart';
+import '../controllers/auth_controller.dart';
 
 class AuthHomePage extends ConsumerWidget {
   const AuthHomePage({super.key});
@@ -12,7 +12,9 @@ class AuthHomePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(authControllerProvider).valueOrNull;
-    final username = session?.user.username ?? '';
+    final displayName = session?.user.fullName.isNotEmpty == true
+        ? session!.user.fullName
+        : session?.user.username ?? '';
 
     return Scaffold(
       backgroundColor: const Color(0xFF070B34),
@@ -38,17 +40,17 @@ class AuthHomePage extends ConsumerWidget {
                     const AppLogo(),
                     const SizedBox(height: 24),
                     Text(
-                      'Welcome back${username.isNotEmpty ? ', $username' : ''}',
+                      'Welcome back${displayName.isNotEmpty ? ', $displayName' : ''}',
                       style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Text(
                       'Your YenkasaAi session is active. Open the chat shell to continue.',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: Colors.white.withValues(alpha: 0.72),
-                          ),
+                        color: Colors.white.withValues(alpha: 0.72),
+                      ),
                     ),
                     const SizedBox(height: 24),
                     Wrap(
@@ -60,9 +62,14 @@ class AuthHomePage extends ConsumerWidget {
                           child: const Text('Open Chat'),
                         ),
                         OutlinedButton(
-                          onPressed: () => ref
-                              .read(authControllerProvider.notifier)
-                              .logout(),
+                          onPressed: () async {
+                            await ref
+                                .read(authControllerProvider.notifier)
+                                .logout();
+                            if (context.mounted) {
+                              context.go('/login');
+                            }
+                          },
                           child: const Text('Log out'),
                         ),
                       ],

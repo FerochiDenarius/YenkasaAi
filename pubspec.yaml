@@ -30,6 +30,3 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/yenkasa_ai_logo.png
-    - assets/branding/GetStartedPage.png
-    - assets/branding/LoginPage.png
-    - assets/branding/SignUpPage.png

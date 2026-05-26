@@ -27,6 +27,37 @@ class AuthController extends AsyncNotifier<AuthSession?> {
     return result.requireValue;
   }
 
+  Future<AuthSession> registerWithYenkasaApp({
+    required String username,
+    required String email,
+    required String password,
+    required String fullName,
+    required String country,
+    required String phoneNumber,
+    required String signupType,
+    required String captchaCode,
+    required bool agreeToTerms,
+    String preferredLanguage = 'en',
+  }) async {
+    state = const AsyncLoading();
+    final result = await AsyncValue.guard(
+      () => _repository.registerWithYenkasaApp(
+        username: username,
+        email: email,
+        password: password,
+        fullName: fullName,
+        country: country,
+        phoneNumber: phoneNumber,
+        signupType: signupType,
+        captchaCode: captchaCode,
+        agreeToTerms: agreeToTerms,
+        preferredLanguage: preferredLanguage,
+      ),
+    );
+    state = result;
+    return result.requireValue;
+  }
+
   Future<AuthSession?> refreshSession() async {
     final result = await _repository.refreshSession();
     state = AsyncData(result);

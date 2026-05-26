@@ -3,29 +3,52 @@ class AuthUser {
     required this.id,
     required this.username,
     required this.email,
+    this.fullName = '',
+    this.country = '',
+    this.phoneNumber = '',
+    this.signupType = '',
     this.profileImage = '',
+    this.role = '',
   });
 
   final String id;
   final String username;
   final String email;
+  final String fullName;
+  final String country;
+  final String phoneNumber;
+  final String signupType;
   final String profileImage;
+  final String role;
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     return AuthUser(
-      id: json['id']?.toString() ?? '',
+      id: json['user_id']?.toString() ?? json['id']?.toString() ?? '',
       username: json['username']?.toString() ?? '',
       email: json['email']?.toString() ?? '',
-      profileImage: json['profileImage']?.toString() ?? '',
+      fullName: json['full_name']?.toString() ?? '',
+      country: json['country']?.toString() ?? '',
+      phoneNumber: json['phone_number']?.toString() ?? '',
+      signupType: json['signup_type']?.toString() ?? '',
+      profileImage:
+          json['profile_image']?.toString() ??
+          json['profileImage']?.toString() ??
+          '',
+      role: json['role']?.toString() ?? '',
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
+      'user_id': id,
       'username': username,
       'email': email,
-      'profileImage': profileImage,
+      'full_name': fullName,
+      'country': country,
+      'phone_number': phoneNumber,
+      'signup_type': signupType,
+      'profile_image': profileImage,
+      'role': role,
     };
   }
 }

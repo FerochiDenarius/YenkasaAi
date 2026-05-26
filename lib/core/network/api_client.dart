@@ -5,9 +5,17 @@ import '../config/app_config.dart';
 import '../storage/auth_session_storage.dart';
 
 final apiClientProvider = Provider<Dio>((ref) {
+  return _buildClient(ref, baseUrl: AppConfig.aiApiBaseUrl);
+});
+
+final authApiClientProvider = Provider<Dio>((ref) {
+  return _buildClient(ref, baseUrl: AppConfig.authApiBaseUrl);
+});
+
+Dio _buildClient(Ref ref, {required String baseUrl}) {
   final dio = Dio(
     BaseOptions(
-      baseUrl: AppConfig.apiBaseUrl,
+      baseUrl: baseUrl,
       connectTimeout: AppConfig.requestTimeout,
       receiveTimeout: AppConfig.receiveTimeout,
       sendTimeout: AppConfig.requestTimeout,
@@ -34,4 +42,4 @@ final apiClientProvider = Provider<Dio>((ref) {
   );
 
   return dio;
-});
+}

@@ -17,8 +17,8 @@ class AuthRepository {
     required AuthService service,
     required AuthSessionStorage storage,
     required this.tokenSink,
-  })  : _service = service,
-        _storage = storage;
+  }) : _service = service,
+       _storage = storage;
 
   final AuthService _service;
   final AuthSessionStorage _storage;
@@ -37,6 +37,35 @@ class AuthRepository {
     final session = await _service.loginWithYenkasaApp(
       email: email,
       password: password,
+    );
+    await _storage.save(session);
+    tokenSink.state = session.token;
+    return session;
+  }
+
+  Future<AuthSession> registerWithYenkasaApp({
+    required String username,
+    required String email,
+    required String password,
+    required String fullName,
+    required String country,
+    required String phoneNumber,
+    required String signupType,
+    required String captchaCode,
+    required bool agreeToTerms,
+    String preferredLanguage = 'en',
+  }) async {
+    final session = await _service.registerWithYenkasaApp(
+      username: username,
+      email: email,
+      password: password,
+      fullName: fullName,
+      country: country,
+      phoneNumber: phoneNumber,
+      signupType: signupType,
+      captchaCode: captchaCode,
+      agreeToTerms: agreeToTerms,
+      preferredLanguage: preferredLanguage,
     );
     await _storage.save(session);
     tokenSink.state = session.token;

@@ -166,7 +166,7 @@ class AiApiService {
         error.type == DioExceptionType.receiveTimeout ||
         error.type == DioExceptionType.connectionError) {
       return ApiException(
-        'YenkasaAI backend is unreachable at ${AppConfig.apiBaseUrl}.',
+        'YenkasaAI backend is unreachable at ${AppConfig.aiApiBaseUrl}.',
         statusCode: error.response?.statusCode,
       );
     }
