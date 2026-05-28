@@ -266,15 +266,18 @@ class _LoginFormCard extends StatelessWidget {
             const SizedBox(height: 34),
             AuthTextField(
               controller: identifierController,
-              label: 'Email, username, or phone',
-              hintText: 'Enter your email, username, or phone',
+              label: 'Email address',
+              hintText: 'Enter your YenkasaAi email address',
               prefixIcon: Icons.mail_outline_rounded,
-              keyboardType: TextInputType.text,
+              keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
               validator: (value) {
                 final text = (value ?? '').trim();
                 if (text.isEmpty) {
-                  return 'Login identifier is required.';
+                  return 'Email address is required.';
+                }
+                if (!text.contains('@')) {
+                  return 'Use the email address linked to your YenkasaAi account.';
                 }
                 return null;
               },

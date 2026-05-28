@@ -113,7 +113,10 @@ class AuthRepository {
         'refreshing stored session sessionId=${current.sessionId} fallback=$fallbackToCachedSession',
         name: 'auth_repository',
       );
-      final updated = await _service.refreshSession(refreshToken);
+      final updated = await _service.refreshSessionForBaseUrl(
+        refreshToken,
+        authBaseUrl: current.authBaseUrl,
+      );
       final merged = _mergeSession(current, updated);
       await _storage.save(merged);
       tokenSink.state = merged.token;
@@ -174,6 +177,9 @@ class AuthRepository {
           ? updated.sessionId
           : current.sessionId,
       user: updated.user.id.isNotEmpty ? updated.user : current.user,
+      authBaseUrl: updated.authBaseUrl.isNotEmpty
+          ? updated.authBaseUrl
+          : current.authBaseUrl,
     );
   }
 

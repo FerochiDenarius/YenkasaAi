@@ -62,6 +62,7 @@ class ChatResponseModel {
     required this.model,
     required this.audience,
     required this.answer,
+    required this.conversationId,
     required this.answerCards,
     required this.suggestedFollowUps,
     required this.sources,
@@ -73,6 +74,7 @@ class ChatResponseModel {
   final String model;
   final String audience;
   final String answer;
+  final String conversationId;
   final List<AnswerCardModel> answerCards;
   final List<String> suggestedFollowUps;
   final List<SourceChunkModel> sources;
@@ -93,6 +95,10 @@ class ChatResponseModel {
       model: json['model'] as String? ?? '',
       audience: json['audience'] as String? ?? 'public',
       answer: json['answer'] as String? ?? '',
+      conversationId:
+          json['conversationId'] as String? ??
+          json['conversation_id'] as String? ??
+          '',
       answerCards: answerCardsJson
           .map(
             (item) => AnswerCardModel.fromJson(
@@ -100,7 +106,10 @@ class ChatResponseModel {
             ),
           )
           .toList(),
-      suggestedFollowUps: suggestedFollowUpsJson.cast<String>(),
+      suggestedFollowUps: {
+        ...suggestedFollowUpsJson.cast<String>(),
+        ...((json['suggestions'] as List?) ?? const []).cast<String>(),
+      }.toList(),
       sources: ((json['sources'] as List?) ?? const [])
           .map(
             (item) => SourceChunkModel.fromJson(

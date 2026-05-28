@@ -4,22 +4,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/account/presentation/account_page.dart';
+import '../../features/admin/presentation/admin_page.dart';
+import '../../features/analytics/presentation/analytics_page.dart';
 import '../../features/auth/domain/auth_roles.dart';
 import '../../features/auth/domain/auth_session.dart';
 import '../../features/auth/presentation/controllers/auth_controller.dart';
 import '../../features/auth/presentation/pages/get_started_page.dart';
-import '../../features/auth/presentation/pages/home_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
+import '../../features/auth/presentation/pages/logout_page.dart';
 import '../../features/auth/presentation/pages/session_bootstrap_page.dart';
 import '../../features/auth/presentation/pages/signup_page.dart';
-import '../../features/analytics/presentation/analytics_page.dart';
 import '../../features/chat/presentation/chat_page.dart';
 import '../../features/chat/presentation/saved_responses_page.dart';
-import '../../features/dashboard/presentation/landing_page.dart';
+import '../../features/control_plane/presentation/control_plane_page.dart';
 import '../../features/ingestion/presentation/ingestion_page.dart';
 import '../../features/knowledge/presentation/knowledge_page.dart';
 import '../../features/moderation/presentation/moderation_page.dart';
+import '../../features/runtime/presentation/runtime_page.dart';
+import '../../features/session/presentation/session_page.dart';
 import '../../features/shell/presentation/ai_shell.dart';
+import '../../features/themes/presentation/themes_page.dart';
+import '../../navigation/navigation_state.dart';
 
 final _routerRefreshListenableProvider = Provider<_RouterRefreshListenable>((
   ref,
@@ -49,6 +55,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         );
         return target;
       }
+
       final path = state.uri.path;
       final isBootRoute = path == '/boot';
       final isAuthRoute = path == '/' || path == '/login' || path == '/signup';
@@ -56,10 +63,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           path == '/home' ||
           path.startsWith('/chat') ||
           path.startsWith('/knowledge') ||
+          path.startsWith('/memory') ||
           path.startsWith('/saved-responses') ||
           path.startsWith('/moderation') ||
           path.startsWith('/analytics') ||
-          path.startsWith('/ingestion');
+          path.startsWith('/ingestion') ||
+          path.startsWith('/account') ||
+          path.startsWith('/admin') ||
+          path.startsWith('/themes') ||
+          path.startsWith('/runtime') ||
+          path.startsWith('/session') ||
+          path.startsWith('/control-plane') ||
+          path.startsWith('/platform') ||
+          path.startsWith('/logout');
 
       if (authState.hasError) {
         developer.log(
@@ -100,29 +116,30 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (path.startsWith('/analytics') && !canAccessAnalyticsRole(role)) {
         _logRouteDecision(
           path: path,
-          target: '/chat',
+          target: '/admin',
           reason: 'analytics_role_blocked',
           session: session,
         );
-        return '/chat';
+        return '/admin';
       }
       if (path.startsWith('/moderation') && !canAccessModerationRole(role)) {
         _logRouteDecision(
           path: path,
-          target: '/chat',
+          target: '/admin',
           reason: 'moderation_role_blocked',
           session: session,
         );
-        return '/chat';
+        return '/admin';
       }
       if (isBootRoute || isAuthRoute) {
+        final target = ref.read(navigationUiControllerProvider).currentRoute;
         _logRouteDecision(
           path: path,
-          target: '/chat',
+          target: target,
           reason: 'authenticated_redirect',
           session: session,
         );
-        return '/chat';
+        return target;
       }
       _logRouteDecision(
         path: path,
@@ -153,15 +170,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) =>
             _fadeSlidePage(const SignUpPage(), state),
       ),
-      GoRoute(
-        path: '/home',
-        pageBuilder: (context, state) =>
-            _fadeSlidePage(const AuthHomePage(), state),
-      ),
+      GoRoute(path: '/home', redirect: (context, state) => '/chat'),
       GoRoute(
         path: '/platform',
-        pageBuilder: (context, state) =>
-            _fadeSlidePage(const LandingPage(), state),
+        redirect: (context, state) => '/control-plane',
       ),
       ShellRoute(
         builder: (context, state, child) =>
@@ -173,19 +185,57 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 const NoTransitionPage(child: ChatPage()),
           ),
           GoRoute(
-            path: '/saved-responses',
+            path: '/control-plane',
             pageBuilder: (context, state) =>
-                const NoTransitionPage(child: SavedResponsesPage()),
+                const NoTransitionPage(child: ControlPlanePage()),
           ),
           GoRoute(
-            path: '/knowledge',
+            path: '/knowledge-base',
             pageBuilder: (context, state) =>
                 const NoTransitionPage(child: KnowledgePage()),
           ),
           GoRoute(
-            path: '/moderation',
+            path: '/knowledge',
+            redirect: (context, state) => '/knowledge-base',
+          ),
+          GoRoute(
+            path: '/memory',
             pageBuilder: (context, state) =>
-                const NoTransitionPage(child: ModerationPage()),
+                const NoTransitionPage(child: SavedResponsesPage()),
+          ),
+          GoRoute(
+            path: '/saved-responses',
+            redirect: (context, state) => '/memory',
+          ),
+          GoRoute(
+            path: '/ingestion',
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: IngestionPage()),
+          ),
+          GoRoute(
+            path: '/account',
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: AccountPage()),
+          ),
+          GoRoute(
+            path: '/admin',
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: AdminPage()),
+          ),
+          GoRoute(
+            path: '/themes',
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: ThemesPage()),
+          ),
+          GoRoute(
+            path: '/runtime',
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: RuntimePage()),
+          ),
+          GoRoute(
+            path: '/session',
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: SessionPage()),
           ),
           GoRoute(
             path: '/analytics',
@@ -193,9 +243,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 const NoTransitionPage(child: AnalyticsPage()),
           ),
           GoRoute(
-            path: '/ingestion',
+            path: '/moderation',
             pageBuilder: (context, state) =>
-                const NoTransitionPage(child: IngestionPage()),
+                const NoTransitionPage(child: ModerationPage()),
+          ),
+          GoRoute(
+            path: '/logout',
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: LogoutPage()),
           ),
         ],
       ),

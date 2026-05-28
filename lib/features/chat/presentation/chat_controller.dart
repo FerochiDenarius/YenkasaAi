@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/app_config.dart';
+import '../../../core/network/user_facing_error.dart';
 import '../data/ai_api_service.dart';
 import '../models/chat_message.dart';
 import '../models/chat_models.dart';
@@ -22,6 +23,7 @@ class ChatState {
     this.isSending = false,
     this.errorMessage,
     this.lastQuestion,
+    this.conversationId,
   });
 
   final String audience;
@@ -33,6 +35,7 @@ class ChatState {
   final bool isSending;
   final String? errorMessage;
   final String? lastQuestion;
+  final String? conversationId;
 
   ChatState copyWith({
     String? audience,
@@ -44,6 +47,7 @@ class ChatState {
     bool? isSending,
     String? errorMessage,
     String? lastQuestion,
+    String? conversationId,
     bool clearError = false,
   }) {
     return ChatState(
@@ -56,6 +60,7 @@ class ChatState {
       isSending: isSending ?? this.isSending,
       errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
       lastQuestion: lastQuestion ?? this.lastQuestion,
+      conversationId: conversationId ?? this.conversationId,
     );
   }
 }
@@ -129,12 +134,12 @@ class ChatController extends StateNotifier<ChatState> {
 
     try {
       await for (final frame in _apiService.streamChat(
-      userId: "YOUR_REAL_USER_ID_HERE",
         question: trimmed,
         history: state.messages
             .where((message) => !message.isStreaming)
             .toList(),
         audience: state.audience,
+        conversationId: state.conversationId,
         includeDebug: includeDebug,
       )) {
         final updatedMessages = [...state.messages];
@@ -149,15 +154,19 @@ class ChatController extends StateNotifier<ChatState> {
           updatedMessages[lastIndex] = updatedMessages[lastIndex].copyWith(
             content: frame.partialAnswer,
             isStreaming: !frame.done,
-            provider: frame.response?.provider ?? updatedMessages[lastIndex].provider,
+            provider:
+                frame.response?.provider ?? updatedMessages[lastIndex].provider,
             model: frame.response?.model ?? updatedMessages[lastIndex].model,
-            audience: frame.response?.audience ?? updatedMessages[lastIndex].audience,
+            audience:
+                frame.response?.audience ?? updatedMessages[lastIndex].audience,
             question: trimmed,
           );
         }
         state = state.copyWith(
           messages: updatedMessages,
           isSending: !frame.done,
+          conversationId:
+              frame.response?.conversationId ?? state.conversationId,
           sources: frame.response?.sources ?? state.sources,
           answerCards: frame.response?.answerCards ?? state.answerCards,
           suggestedFollowUps:
@@ -166,21 +175,24 @@ class ChatController extends StateNotifier<ChatState> {
         );
       }
     } catch (error) {
+      final message = presentUserFacingError(
+        error,
+        fallback: 'YenkasaAI could not answer that request right now.',
+      );
       final updatedMessages = [...state.messages];
       final lastIndex = updatedMessages.lastIndexWhere(
         (message) => message.id == placeholder.id,
       );
       if (lastIndex != -1) {
         updatedMessages[lastIndex] = updatedMessages[lastIndex].copyWith(
-          content:
-              'YenkasaAI could not answer that request right now.\n\nError: $error',
+          content: message,
           isStreaming: false,
         );
       }
       state = state.copyWith(
         messages: updatedMessages,
         isSending: false,
-        errorMessage: error.toString(),
+        errorMessage: message,
       );
     }
   }

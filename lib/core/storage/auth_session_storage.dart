@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config/app_config.dart';
+import '../diagnostics/app_diagnostics.dart';
 import '../../features/auth/domain/auth_session.dart';
 
 const _authSessionKey = 'yenkasa_ai.auth.session';
@@ -30,10 +32,19 @@ class AuthSessionStorage {
   final FlutterSecureStorage _storage;
 
   Future<void> save(AuthSession session) async {
-    final encoded = jsonEncode(session.toJson());
+    final normalizedSession = _normalizeSession(session);
+    final encoded = jsonEncode(normalizedSession.toJson());
     developer.log(
-      'auth session saved sessionId=${session.sessionId} userId=${session.user.id}',
+      'auth session saved sessionId=${normalizedSession.sessionId} userId=${normalizedSession.user.id} authBaseUrl=${normalizedSession.authBaseUrl}',
       name: 'auth_storage',
+    );
+    logAuthDiagnostics(
+      event: 'session_saved',
+      hasToken: normalizedSession.token.isNotEmpty,
+      tokenLength: normalizedSession.token.length,
+      source: normalizedSession.authBaseUrl.isEmpty
+          ? 'unknown'
+          : normalizedSession.authBaseUrl,
     );
     try {
       await _storage.write(key: _authSessionKey, value: encoded);
@@ -64,6 +75,14 @@ class AuthSessionStorage {
     if (raw == null || raw.isEmpty) {
       final prefs = await SharedPreferences.getInstance();
       raw = prefs.getString(_authSessionFallbackKey);
+      if (raw != null && raw.isNotEmpty) {
+        logAuthDiagnostics(
+          event: 'token_loaded',
+          hasToken: true,
+          tokenLength: raw.length,
+          source: 'shared_preferences_fallback',
+        );
+      }
     }
     developer.log(
       'token loaded hasValue=${raw != null && raw.isNotEmpty}',
@@ -76,19 +95,31 @@ class AuthSessionStorage {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) {
-        final session = AuthSession.fromJson(decoded);
+        final session = _normalizeSession(AuthSession.fromJson(decoded));
         developer.log(
-          'user restored sessionId=${session.sessionId} userId=${session.user.id}',
+          'user restored sessionId=${session.sessionId} userId=${session.user.id} authBaseUrl=${session.authBaseUrl}',
           name: 'auth_storage',
+        );
+        logAuthDiagnostics(
+          event: 'session_restored',
+          hasToken: session.token.isNotEmpty,
+          tokenLength: session.token.length,
+          source: session.authBaseUrl.isEmpty ? 'unknown' : session.authBaseUrl,
         );
         return session;
       }
-      final session = AuthSession.fromJson(
-        Map<String, dynamic>.from(decoded as Map),
+      final session = _normalizeSession(
+        AuthSession.fromJson(Map<String, dynamic>.from(decoded as Map)),
       );
       developer.log(
-        'user restored sessionId=${session.sessionId} userId=${session.user.id}',
+        'user restored sessionId=${session.sessionId} userId=${session.user.id} authBaseUrl=${session.authBaseUrl}',
         name: 'auth_storage',
+      );
+      logAuthDiagnostics(
+        event: 'session_restored',
+        hasToken: session.token.isNotEmpty,
+        tokenLength: session.token.length,
+        source: session.authBaseUrl.isEmpty ? 'unknown' : session.authBaseUrl,
       );
       return session;
     } catch (_) {
@@ -113,5 +144,28 @@ class AuthSessionStorage {
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_authSessionFallbackKey);
+  }
+
+  AuthSession _normalizeSession(AuthSession session) {
+    final canonicalBaseUrl = AppConfig.canonicalAiBackendBaseUrl;
+    if (canonicalBaseUrl.isEmpty) {
+      return session;
+    }
+
+    final normalizedStored = _normalizeBaseUrl(session.authBaseUrl);
+    final normalizedCanonical = _normalizeBaseUrl(canonicalBaseUrl);
+    if (normalizedStored == normalizedCanonical) {
+      return session;
+    }
+
+    developer.log(
+      'auth session backend migrated from=${session.authBaseUrl} to=$canonicalBaseUrl',
+      name: 'auth_storage',
+    );
+    return session.copyWith(authBaseUrl: canonicalBaseUrl);
+  }
+
+  String _normalizeBaseUrl(String value) {
+    return value.trim().replaceAll(RegExp(r'/+$'), '');
   }
 }

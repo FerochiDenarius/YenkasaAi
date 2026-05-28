@@ -77,13 +77,6 @@ class _AuthViewportState extends State<AuthViewport>
                     ),
                   ),
                 ),
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: _AuthCircuitPainter(_controller.value),
-                    ),
-                  ),
-                ),
                 SafeArea(child: child!),
               ],
             ),
@@ -358,57 +351,6 @@ class _AuthParticlesPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _AuthParticlesPainter oldDelegate) {
-    return oldDelegate.progress != progress;
-  }
-}
-
-class _AuthCircuitPainter extends CustomPainter {
-  _AuthCircuitPainter(this.progress);
-
-  final double progress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AuthColors.primary.withValues(alpha: 0.08)
-      ..strokeWidth = 1;
-
-    final highlight = Paint()
-      ..color = AuthColors.primaryBright.withValues(alpha: 0.16)
-      ..strokeWidth = 1.2;
-
-    final startX = size.width * 0.18;
-    final endX = size.width * 0.88;
-    final baseY = size.height * 0.72;
-    for (var index = 0; index < 8; index++) {
-      final x = startX + ((endX - startX) / 7) * index;
-      final path = Path()
-        ..moveTo(x, baseY)
-        ..lineTo(x, baseY - 110 - ((index % 2) * 40))
-        ..lineTo(x + 34, baseY - 150 - ((index % 2) * 40))
-        ..lineTo(x + 34, baseY - 212 - ((index % 3) * 30));
-      canvas.drawPath(path, paint);
-
-      final pulseY = baseY - 60 - (index * 4);
-      final pulse = Offset(
-        x,
-        pulseY + math.sin((progress * 2 * math.pi) + index) * 14,
-      );
-      canvas.drawCircle(
-        pulse,
-        2.6,
-        Paint()..color = AuthColors.primaryBright.withValues(alpha: 0.38),
-      );
-      canvas.drawLine(
-        Offset(x - 8, pulse.dy),
-        Offset(x + 8, pulse.dy),
-        highlight,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _AuthCircuitPainter oldDelegate) {
     return oldDelegate.progress != progress;
   }
 }

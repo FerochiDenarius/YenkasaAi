@@ -47,7 +47,7 @@ class AppLogo extends StatelessWidget {
             ),
             if (!compact)
               Text(
-                'AI operating system for Yenkasa',
+                'AI operating system for Yenk',
                 style: textTheme.bodySmall?.copyWith(
                   color: textTheme.bodySmall?.color?.withValues(alpha: 0.68),
                 ),

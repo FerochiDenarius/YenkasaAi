@@ -7,12 +7,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/storage/auth_session_storage.dart';
+import '../../auth/presentation/controllers/auth_controller.dart';
 import '../../../models/backend_health.dart';
 import '../models/chat_message.dart';
 import '../models/chat_models.dart';
 
 final aiApiServiceProvider = Provider<AiApiService>((ref) {
-  return AiApiService(ref.watch(apiClientProvider));
+  return AiApiService(
+    ref,
+    primaryDio: ref.watch(apiClientProvider),
+    legacyDio: ref.watch(legacyAuthApiClientProvider),
+    publicEngineDio: buildPlainDio(baseUrl: AppConfig.publicAiEngineBaseUrl),
+  );
 });
 
 class ChatStreamFrame {
@@ -28,13 +35,25 @@ class ChatStreamFrame {
 }
 
 class AiApiService {
-  AiApiService(this._dio);
+  AiApiService(
+    this._ref, {
+    required Dio primaryDio,
+    required Dio legacyDio,
+    required Dio publicEngineDio,
+  }) : _primaryDio = primaryDio,
+       _legacyDio = legacyDio,
+       _publicEngineDio = publicEngineDio;
 
-  final Dio _dio;
+  final Ref _ref;
+  final Dio _primaryDio;
+  final Dio _legacyDio;
+  final Dio _publicEngineDio;
 
   Future<BackendHealth> fetchHealth() async {
     try {
-      final response = await _dio.get<Map<String, dynamic>>('/health');
+      final transport = await _resolveTransport(conversationId: '');
+      final healthDio = transport.isLegacy ? _legacyDio : _publicEngineDio;
+      final response = await healthDio.get<Map<String, dynamic>>('/health');
       return BackendHealth.fromJson(response.data ?? const {});
     } on DioException catch (error) {
       throw _mapDioError(error);
@@ -47,7 +66,9 @@ class AiApiService {
     int? topK,
   }) async {
     try {
-      final response = await _dio.post<Map<String, dynamic>>(
+      final transport = await _resolveTransport(conversationId: '');
+      final searchDio = transport.isLegacy ? _legacyDio : _publicEngineDio;
+      final response = await searchDio.post<Map<String, dynamic>>(
         '/search',
         data: {
           'question': question,
@@ -63,23 +84,37 @@ class AiApiService {
 
   Stream<ChatStreamFrame> streamChat({
     required String question,
-    required String userId,
     required List<ChatMessage> history,
     required String audience,
+    String? conversationId,
     bool includeDebug = false,
   }) async* {
     try {
-      final response = await _dio.post<ResponseBody>(
-        '/chat',
-        data: {
-          'user_id': userId,
-          'question': question,
-          'history': history.map((item) => item.toApiJson()).toList(),
-          'audience': audience,
-          'include_debug': includeDebug,
-        },
-        options: Options(responseType: ResponseType.stream),
+      final transport = await _resolveTransport(
+        conversationId: conversationId ?? '',
       );
+      final response = transport.isLegacy
+          ? await _legacyDio.post<ResponseBody>(
+              '/chat',
+              data: {
+                'question': question,
+                'history': history.map((item) => item.toApiJson()).toList(),
+                'audience': audience,
+                'include_debug': includeDebug,
+              },
+              options: Options(responseType: ResponseType.stream),
+            )
+          : await _primaryDio.post<ResponseBody>(
+              '/api/ai/chat',
+              data: {
+                'message': question,
+                if (transport.conversationId.isNotEmpty)
+                  'conversationId': transport.conversationId,
+                'mode': _modeForAudience(audience),
+                'includeDebug': includeDebug,
+              },
+              options: Options(responseType: ResponseType.stream),
+            );
 
       final body = await utf8.decoder.bind(response.data!.stream).join();
       final contentType =
@@ -115,6 +150,34 @@ class AiApiService {
     } on FormatException {
       throw const ApiException('YenkasaAI returned an unreadable response.');
     }
+  }
+
+  String _modeForAudience(String audience) {
+    return audience == 'engineering' ? 'engineering' : 'hybrid';
+  }
+
+  Future<_AiTransport> _resolveTransport({
+    required String conversationId,
+  }) async {
+    var session = _ref.read(authControllerProvider).valueOrNull;
+    if (session == null) {
+      final restored = await _ref.read(authSessionStorageProvider).load();
+      session = restored;
+    }
+    final authBaseUrl = (session?.authBaseUrl ?? '').trim();
+    final normalizedLegacyBaseUrl = _normalizeBaseUrl(
+      AppConfig.legacyAuthApiBaseUrl,
+    );
+    if (authBaseUrl.isEmpty ||
+        _normalizeBaseUrl(authBaseUrl) == normalizedLegacyBaseUrl) {
+      return _AiTransport(isLegacy: true, conversationId: '');
+    }
+
+    return _AiTransport(isLegacy: false, conversationId: conversationId);
+  }
+
+  String _normalizeBaseUrl(String value) {
+    return value.trim().replaceAll(RegExp(r'/+$'), '');
   }
 
   Stream<ChatStreamFrame> _streamFromSse(String body) async* {
@@ -188,4 +251,11 @@ class AiApiService {
       statusCode: error.response?.statusCode,
     );
   }
+}
+
+class _AiTransport {
+  const _AiTransport({required this.isLegacy, required this.conversationId});
+
+  final bool isLegacy;
+  final String conversationId;
 }

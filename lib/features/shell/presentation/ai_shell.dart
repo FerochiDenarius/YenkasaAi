@@ -1,63 +1,24 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../app/yenkasa_ai_app.dart';
-import '../../../core/config/app_config.dart';
+import '../../../components/ai_glass_panel.dart';
+import '../../../components/control_plane_card.dart';
+import '../../../components/navigation_menu_item.dart';
+import '../../../components/runtime_panel.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_logo.dart';
-import '../../../core/widgets/glass_card.dart';
-import '../../auth/domain/auth_roles.dart';
+import '../../../design/ai_tokens.dart';
+import '../../../navigation/app_navigation.dart';
+import '../../../navigation/navigation_state.dart';
+import '../../../theme/ai_theme_controller.dart';
+import '../../../theme/ai_theme_preset.dart';
 import '../../auth/presentation/controllers/auth_controller.dart';
-import '../../health/presentation/health_controller.dart';
 import '../../health/presentation/health_indicator.dart';
 
-class NavDestinationItem {
-  const NavDestinationItem({
-    required this.route,
-    required this.label,
-    required this.icon,
-  });
-
-  final String route;
-  final String label;
-  final IconData icon;
-}
-
-const navItems = <NavDestinationItem>[
-  NavDestinationItem(
-    route: '/chat',
-    label: 'AI Chat',
-    icon: Icons.smart_toy_outlined,
-  ),
-  NavDestinationItem(
-    route: '/knowledge',
-    label: 'Knowledge Base',
-    icon: Icons.dataset_linked_outlined,
-  ),
-  NavDestinationItem(
-    route: '/saved-responses',
-    label: 'Memory & Saves',
-    icon: Icons.bookmark_outline_rounded,
-  ),
-  NavDestinationItem(
-    route: '/moderation',
-    label: 'Moderation',
-    icon: Icons.gpp_good_outlined,
-  ),
-  NavDestinationItem(
-    route: '/analytics',
-    label: 'Analytics',
-    icon: Icons.analytics_outlined,
-  ),
-  NavDestinationItem(
-    route: '/ingestion',
-    label: 'Ingestion',
-    icon: Icons.upload_file_outlined,
-  ),
-];
-
-class AiShell extends ConsumerWidget {
+class AiShell extends ConsumerStatefulWidget {
   const AiShell({
     super.key,
     required this.currentLocation,
@@ -68,688 +29,213 @@ class AiShell extends ConsumerWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isDesktop = MediaQuery.sizeOf(context).width >= 1100;
-    final themeMode = ref.watch(themeModeProvider);
-    final isChatRoute = currentLocation.startsWith('/chat');
+  ConsumerState<AiShell> createState() => _AiShellState();
+}
+
+class _AiShellState extends ConsumerState<AiShell> {
+  bool _sidebarHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final navState = ref.watch(navigationUiControllerProvider);
+    final navController = ref.read(navigationUiControllerProvider.notifier);
     final session = ref.watch(authControllerProvider).valueOrNull;
-    final visibleItems = _visibleNavItems(session?.user.role);
-    final displayName = _displayName(session);
+    final currentRoute = canonicalRoute(widget.currentLocation);
+    if (navState.currentRoute != currentRoute) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        navController.setCurrentRoute(currentRoute);
+      });
+    }
+
+    final media = MediaQuery.of(context);
+    final width = media.size.width;
+    final showSidebar = width >= 980;
+    final expandedSidebar =
+        showSidebar && (!navState.sidebarCollapsed || _sidebarHovered);
+    final activePreset = ref.watch(aiThemePresetProvider);
 
     Future<void> handleLogout() async {
       await ref.read(authControllerProvider.notifier).logout();
-      if (context.mounted) {
-        context.go('/login');
-      }
+      if (!mounted) return;
+      this.context.go('/login');
     }
 
-    final scaffold = Scaffold(
+    return Scaffold(
       backgroundColor: Colors.transparent,
-      drawer: isDesktop
+      drawerEnableOpenDragGesture: true,
+      drawer: showSidebar
           ? null
-          : _SidebarDrawer(
-              items: visibleItems,
-              displayName: displayName,
-              onLogout: () async {
-                Navigator.of(context).pop();
-                await handleLogout();
-              },
+          : Drawer(
+              width: math.min(width * 0.88, 360),
+              backgroundColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              elevation: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 0, 0, 10),
+                  child: _SidebarPanel(
+                    currentRoute: currentRoute,
+                    expanded: true,
+                    isDesktop: false,
+                    displayName: _displayName(session),
+                    activePreset: activePreset,
+                    onToggleCollapse: null,
+                    onToggleRuntime: navController.toggleRuntimeExpanded,
+                    runtimeExpanded: navState.runtimeExpanded,
+                    onNavigate: (route) {
+                      Navigator.of(context).pop();
+                      _navigateToRoute(
+                        route,
+                        context,
+                        navController,
+                        handleLogout,
+                      );
+                    },
+                  ),
+                ),
+              ),
             ),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final compactTopBar = constraints.maxWidth < 760;
-            return Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Color(0xFF0A0B15),
-                    Color(0xFF111325),
-                    Color(0xFF0F1020),
-                  ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-              ),
-              child: Row(
-                children: [
-                  if (isDesktop)
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: _SidebarPanel(
-                        currentLocation: currentLocation,
-                        items: visibleItems,
-                        displayName: displayName,
-                        onLogout: handleLogout,
-                      ),
-                    ),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        isDesktop ? 0 : 16,
-                        16,
-                        16,
-                        16,
-                      ),
-                      child: Column(
-                        children: [
-                          if (compactTopBar && isChatRoute) ...[
-                            _CompactChatTopBar(
-                              onOpenDrawer: isDesktop
-                                  ? null
-                                  : () => Scaffold.of(context).openDrawer(),
-                              onOpenSettings: () {
-                                ref
-                                    .read(themeModeProvider.notifier)
-                                    .state = themeMode == ThemeMode.dark
-                                    ? ThemeMode.light
-                                    : ThemeMode.dark;
-                              },
-                            ),
-                            const SizedBox(height: 14),
-                            Container(
-                              height: 1,
-                              color: Colors.white.withValues(alpha: 0.08),
-                            ),
-                          ] else
-                            GlassCard(
-                              strong: true,
-                              padding: EdgeInsets.symmetric(
-                                horizontal: compactTopBar ? 14 : 20,
-                                vertical: compactTopBar ? 12 : 16,
-                              ),
-                              child: compactTopBar
-                                  ? Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            if (!isDesktop)
-                                              Builder(
-                                                builder: (context) =>
-                                                    IconButton(
-                                                      visualDensity:
-                                                          VisualDensity.compact,
-                                                      onPressed: () =>
-                                                          Scaffold.of(
-                                                            context,
-                                                          ).openDrawer(),
-                                                      icon: const Icon(
-                                                        Icons.menu_rounded,
-                                                      ),
-                                                    ),
-                                              ),
-                                            Expanded(
-                                              child: Text(
-                                                isChatRoute
-                                                    ? 'AI Chat'
-                                                    : 'YenkasaAI',
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .titleSmall
-                                                    ?.copyWith(
-                                                      fontWeight:
-                                                          FontWeight.w700,
-                                                    ),
-                                              ),
-                                            ),
-                                            const HealthIndicator(
-                                              compact: true,
-                                            ),
-                                            const SizedBox(width: 6),
-                                            IconButton(
-                                              visualDensity:
-                                                  VisualDensity.compact,
-                                              onPressed: () {
-                                                ref
-                                                        .read(
-                                                          themeModeProvider
-                                                              .notifier,
-                                                        )
-                                                        .state =
-                                                    themeMode == ThemeMode.dark
-                                                    ? ThemeMode.light
-                                                    : ThemeMode.dark;
-                                              },
-                                              icon: Icon(
-                                                themeMode == ThemeMode.dark
-                                                    ? Icons.light_mode_rounded
-                                                    : Icons.dark_mode_rounded,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        if (!isChatRoute) ...[
-                                          const SizedBox(height: 10),
-                                          TextField(
-                                            decoration: InputDecoration(
-                                              hintText:
-                                                  'Search prompts or docs',
-                                              prefixIcon: const Icon(
-                                                Icons.search_rounded,
-                                              ),
-                                              suffixIcon: IconButton(
-                                                onPressed: () =>
-                                                    context.go('/knowledge'),
-                                                icon: const Icon(
-                                                  Icons.arrow_forward_rounded,
-                                                ),
-                                              ),
-                                            ),
-                                            onSubmitted: (_) =>
-                                                context.go('/knowledge'),
-                                          ),
-                                        ],
-                                      ],
-                                    )
-                                  : Row(
-                                      children: [
-                                        if (isChatRoute) ...[
-                                          if (!isDesktop)
-                                            Builder(
-                                              builder: (context) => IconButton(
-                                                onPressed: () => Scaffold.of(
-                                                  context,
-                                                ).openDrawer(),
-                                                icon: const Icon(
-                                                  Icons.menu_rounded,
-                                                ),
-                                              ),
-                                            ),
-                                          if (!isDesktop)
-                                            const SizedBox(width: 8),
-                                          Text(
-                                            'AI Chat',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .titleMedium
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                          ),
-                                          const Spacer(),
-                                          const HealthIndicator(),
-                                          const SizedBox(width: 12),
-                                          IconButton(
-                                            onPressed: () {
-                                              ref
-                                                      .read(
-                                                        themeModeProvider
-                                                            .notifier,
-                                                      )
-                                                      .state =
-                                                  themeMode == ThemeMode.dark
-                                                  ? ThemeMode.light
-                                                  : ThemeMode.dark;
-                                            },
-                                            icon: Icon(
-                                              themeMode == ThemeMode.dark
-                                                  ? Icons.light_mode_rounded
-                                                  : Icons.dark_mode_rounded,
-                                            ),
-                                          ),
-                                        ] else ...[
-                                          if (!isDesktop)
-                                            Builder(
-                                              builder: (context) => IconButton(
-                                                onPressed: () => Scaffold.of(
-                                                  context,
-                                                ).openDrawer(),
-                                                icon: const Icon(
-                                                  Icons.menu_rounded,
-                                                ),
-                                              ),
-                                            ),
-                                          if (!isDesktop)
-                                            const SizedBox(width: 8),
-                                          Expanded(
-                                            child: TextField(
-                                              decoration: InputDecoration(
-                                                hintText:
-                                                    'Search prompts, architecture, moderation, or rewards',
-                                                prefixIcon: const Icon(
-                                                  Icons.search_rounded,
-                                                ),
-                                                suffixIcon: IconButton(
-                                                  onPressed: () =>
-                                                      context.go('/knowledge'),
-                                                  icon: const Icon(
-                                                    Icons.arrow_forward_rounded,
-                                                  ),
-                                                ),
-                                              ),
-                                              onSubmitted: (_) =>
-                                                  context.go('/knowledge'),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 16),
-                                          const HealthIndicator(),
-                                          const SizedBox(width: 12),
-                                          IconButton(
-                                            onPressed: () {
-                                              ref
-                                                      .read(
-                                                        themeModeProvider
-                                                            .notifier,
-                                                      )
-                                                      .state =
-                                                  themeMode == ThemeMode.dark
-                                                  ? ThemeMode.light
-                                                  : ThemeMode.dark;
-                                            },
-                                            icon: Icon(
-                                              themeMode == ThemeMode.dark
-                                                  ? Icons.light_mode_rounded
-                                                  : Icons.dark_mode_rounded,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                            ),
-                          const SizedBox(height: 16),
-                          Expanded(
-                            child: isChatRoute
-                                ? child
-                                : SingleChildScrollView(child: child),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    );
-
-    return scaffold;
-  }
-}
-
-class _SidebarDrawer extends StatelessWidget {
-  const _SidebarDrawer({
-    required this.items,
-    required this.displayName,
-    required this.onLogout,
-  });
-
-  final List<NavDestinationItem> items;
-  final String displayName;
-  final Future<void> Function() onLogout;
-
-  @override
-  Widget build(BuildContext context) {
-    return Drawer(
-      backgroundColor: Colors.transparent,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: _SidebarPanel(
-          currentLocation: GoRouterState.of(context).uri.path,
-          items: items,
-          displayName: displayName,
-          onLogout: onLogout,
-          scrollable: true,
-        ),
-      ),
-    );
-  }
-}
-
-class _SidebarPanel extends StatelessWidget {
-  const _SidebarPanel({
-    required this.currentLocation,
-    required this.items,
-    required this.displayName,
-    required this.onLogout,
-    this.scrollable = false,
-  });
-
-  final String currentLocation;
-  final List<NavDestinationItem> items;
-  final String displayName;
-  final Future<void> Function() onLogout;
-  final bool scrollable;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SizedBox(
-      width: scrollable ? double.infinity : 298,
-      child: GlassCard(
-        strong: true,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const AppLogo(),
-              const SizedBox(height: 28),
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(28),
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF5B21B6),
-                      Color(0xFF7C3AED),
-                      Color(0xFF3B82F6),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Control Plane',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: Colors.white70,
-                        letterSpacing: 1.6,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Engineering intelligence workspace',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'RAG answers, moderation signals, ingestion health, and infrastructure analytics in one place.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: Colors.white70,
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    FilledButton.tonal(
-                      onPressed: () => context.go('/'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.white.withValues(alpha: 0.18),
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('Launchpad'),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              for (final item in items)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _NavButton(
-                    item: item,
-                    active: currentLocation == item.route,
-                  ),
-                ),
-              SizedBox(height: scrollable ? 24 : 72),
-              GlassCard(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Runtime',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        letterSpacing: 1.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _runtimeRow(context, 'Generation', 'Vertex AI'),
-                    const SizedBox(height: 10),
-                    _runtimeRow(context, 'Retrieval', 'Chroma + HF'),
-                    const SizedBox(height: 10),
-                    _runtimeRow(context, 'Future', 'Voice + Auth'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              GlassCard(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Session',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        letterSpacing: 1.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      displayName.isEmpty ? 'Signed in user' : displayName,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'End the current session from the control menu.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: Colors.white70,
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          await onLogout();
-                        },
-                        icon: const Icon(Icons.logout_rounded),
-                        label: const Text('Log out'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _runtimeRow(BuildContext context, String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: Colors.white70),
-        ),
-        Text(
-          value,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-        ),
-      ],
-    );
-  }
-}
-
-String _displayName(dynamic session) {
-  if (session == null) {
-    return '';
-  }
-  final fullName = session.user.fullName;
-  if (fullName.isNotEmpty) {
-    return fullName;
-  }
-  return session.user.username;
-}
-
-List<NavDestinationItem> _visibleNavItems(String? role) {
-  return navItems.where((item) {
-    if (item.route == '/analytics') {
-      return canAccessAnalyticsRole(role);
-    }
-    if (item.route == '/moderation') {
-      return canAccessModerationRole(role);
-    }
-    return true;
-  }).toList();
-}
-
-class _NavButton extends StatelessWidget {
-  const _NavButton({required this.item, required this.active});
-
-  final NavDestinationItem item;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: active ? const Color(0xFF7C3AED) : Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () => context.go(item.route),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          child: Row(
-            children: [
-              Icon(item.icon, color: active ? Colors.white : null, size: 20),
-              const SizedBox(width: 12),
-              Text(
-                item.label,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: active ? Colors.white : null,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CompactChatTopBar extends StatelessWidget {
-  const _CompactChatTopBar({
-    required this.onOpenDrawer,
-    required this.onOpenSettings,
-  });
-
-  final VoidCallback? onOpenDrawer;
-  final VoidCallback onOpenSettings;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        IconButton(
-          onPressed: onOpenDrawer,
-          icon: const Icon(Icons.menu_rounded, size: 28),
-        ),
-        const SizedBox(width: 8),
-        const _CompactBrandLockup(),
-        const Spacer(),
-        const _HeaderPresencePill(),
-        const SizedBox(width: 12),
-        _HeaderCircleButton(icon: Icons.tune_rounded, onTap: onOpenSettings),
-      ],
-    );
-  }
-}
-
-class _CompactBrandLockup extends StatelessWidget {
-  const _CompactBrandLockup();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AiPalette.violet.withValues(alpha: 0.4)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Image.asset(AppConfig.logoAsset, fit: BoxFit.cover),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          'Yenkasa AI',
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-        ),
-      ],
-    );
-  }
-}
-
-class _HeaderPresencePill extends ConsumerWidget {
-  const _HeaderPresencePill();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final healthAsync = ref.watch(backendHealthProvider);
-    final online = healthAsync.maybeWhen(
-      data: (_) => true,
-      orElse: () => false,
-    );
-    final label = healthAsync.when(
-      data: (_) => 'Online',
-      loading: () => 'Checking',
-      error: (_, __) => 'Offline',
-    );
-    final dotColor = online
-        ? AiPalette.mint
-        : Colors.white.withValues(alpha: 0.5);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.02),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      body: Stack(
         children: [
-          Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              color: dotColor,
-              shape: BoxShape.circle,
-              boxShadow: online
-                  ? [
-                      BoxShadow(
-                        color: dotColor.withValues(alpha: 0.5),
-                        blurRadius: 12,
-                        spreadRadius: 1,
+          const _ShellBackdrop(),
+          Padding(
+            padding: EdgeInsets.only(
+              top: media.padding.top + 10,
+              left: showSidebar ? 18 : 10,
+              right: showSidebar ? 18 : 10,
+              bottom: math.max(media.padding.bottom, 10),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (showSidebar)
+                  MouseRegion(
+                    onEnter: (_) => setState(() => _sidebarHovered = true),
+                    onExit: (_) => setState(() => _sidebarHovered = false),
+                    child: AnimatedContainer(
+                      duration: AiMotion.medium,
+                      curve: Curves.easeOutCubic,
+                      width: expandedSidebar ? 340 : 92,
+                      child: _SidebarPanel(
+                        currentRoute: currentRoute,
+                        expanded: expandedSidebar,
+                        isDesktop: true,
+                        displayName: _displayName(session),
+                        activePreset: activePreset,
+                        onToggleCollapse: navController.toggleSidebar,
+                        onToggleRuntime: navController.toggleRuntimeExpanded,
+                        runtimeExpanded: navState.runtimeExpanded,
+                        onNavigate: (route) => _navigateToRoute(
+                          route,
+                          context,
+                          navController,
+                          handleLogout,
+                        ),
                       ),
-                    ]
-                  : null,
+                    ),
+                  ),
+                if (showSidebar) const SizedBox(width: 18),
+                Expanded(
+                  child: Column(
+                    children: [
+                      _ShellTopBar(
+                        title: routeTitle(currentRoute),
+                        currentRoute: currentRoute,
+                        showMenuButton: !showSidebar,
+                        displayName: _displayName(session),
+                        activePreset: activePreset,
+                        onOpenThemes: () => context.go('/themes'),
+                      ),
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: context.aiSurface.panelSoft,
+                            borderRadius: AiRadius.workspace,
+                            border: Border.all(
+                              color: context.aiSurface.outline,
+                            ),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: AiRadius.workspace,
+                            child: AnimatedSwitcher(
+                              duration: AiMotion.medium,
+                              switchInCurve: Curves.easeOutCubic,
+                              switchOutCurve: Curves.easeInCubic,
+                              child: KeyedSubtree(
+                                key: ValueKey(currentRoute),
+                                child: widget.child,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 10),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: online
-                  ? AiPalette.mint
-                  : Colors.white.withValues(alpha: 0.8),
-              fontWeight: FontWeight.w600,
+        ],
+      ),
+    );
+  }
+
+  void _navigateToRoute(
+    String route,
+    BuildContext context,
+    NavigationUiController navController,
+    Future<void> Function() handleLogout,
+  ) {
+    if (route == '/logout') {
+      handleLogout();
+      return;
+    }
+    navController.setCurrentRoute(route);
+    context.go(route);
+  }
+
+  String _displayName(dynamic session) {
+    final user = session?.user;
+    final fullName = user?.fullName?.toString().trim() ?? '';
+    if (fullName.isNotEmpty) return fullName;
+    final username = user?.username?.toString().trim() ?? '';
+    if (username.isNotEmpty) return username;
+    return 'Yenkasa Operator';
+  }
+}
+
+class _ShellBackdrop extends StatelessWidget {
+  const _ShellBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    final surface = context.aiSurface;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [surface.backgroundTop, surface.backgroundBottom],
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            top: -120,
+            right: -40,
+            child: _GlowOrb(
+              color: surface.glowPrimary.withValues(alpha: 0.34),
+              size: 320,
+            ),
+          ),
+          Positioned(
+            left: -100,
+            bottom: -60,
+            child: _GlowOrb(
+              color: surface.glowSecondary.withValues(alpha: 0.2),
+              size: 260,
             ),
           ),
         ],
@@ -758,22 +244,288 @@ class _HeaderPresencePill extends ConsumerWidget {
   }
 }
 
-class _HeaderCircleButton extends StatelessWidget {
-  const _HeaderCircleButton({required this.icon, required this.onTap});
+class _ShellTopBar extends StatelessWidget {
+  const _ShellTopBar({
+    required this.title,
+    required this.currentRoute,
+    required this.showMenuButton,
+    required this.displayName,
+    required this.activePreset,
+    required this.onOpenThemes,
+  });
 
-  final IconData icon;
-  final VoidCallback onTap;
+  final String title;
+  final String currentRoute;
+  final bool showMenuButton;
+  final String displayName;
+  final AiThemePreset activePreset;
+  final VoidCallback onOpenThemes;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+    final compact = MediaQuery.sizeOf(context).width < 760;
+    final textTheme = Theme.of(context).textTheme;
+
+    return AiGlassPanel(
+      strong: true,
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 12 : 16,
+        vertical: compact ? 10 : 14,
       ),
-      child: IconButton(onPressed: onTap, icon: Icon(icon, size: 22)),
+      child: Row(
+        children: [
+          if (showMenuButton)
+            Builder(
+              builder: (innerContext) => IconButton(
+                iconSize: 18,
+                visualDensity: VisualDensity.compact,
+                onPressed: () => Scaffold.of(innerContext).openDrawer(),
+                icon: const Icon(Icons.menu_rounded),
+              ),
+            ),
+          if (showMenuButton) const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  currentRoute == '/control-plane'
+                      ? 'Unified AI operating system workspace'
+                      : 'Signed in as $displayName',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: context.aiSurface.textSecondary,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          const HealthIndicator(compact: true),
+          const SizedBox(width: 10),
+          Tooltip(
+            message: activePreset.label,
+            child: IconButton(
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              onPressed: onOpenThemes,
+              icon: const Icon(Icons.tune_rounded),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SidebarPanel extends StatelessWidget {
+  const _SidebarPanel({
+    required this.currentRoute,
+    required this.expanded,
+    required this.isDesktop,
+    required this.displayName,
+    required this.activePreset,
+    required this.onToggleCollapse,
+    required this.onToggleRuntime,
+    required this.runtimeExpanded,
+    required this.onNavigate,
+  });
+
+  final String currentRoute;
+  final bool expanded;
+  final bool isDesktop;
+  final String displayName;
+  final AiThemePreset activePreset;
+  final VoidCallback? onToggleCollapse;
+  final VoidCallback onToggleRuntime;
+  final bool runtimeExpanded;
+  final ValueChanged<String> onNavigate;
+
+  @override
+  Widget build(BuildContext context) {
+    final surface = context.aiSurface;
+
+    return AiGlassPanel(
+      strong: true,
+      padding: EdgeInsets.fromLTRB(
+        expanded ? 16 : 10,
+        16,
+        expanded ? 16 : 10,
+        14,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (expanded)
+                const Expanded(child: AppLogo())
+              else
+                const Center(child: AppLogo(compact: true)),
+              if (isDesktop && onToggleCollapse != null) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  iconSize: 18,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onToggleCollapse,
+                  icon: Icon(
+                    expanded
+                        ? Icons.keyboard_double_arrow_left_rounded
+                        : Icons.keyboard_double_arrow_right_rounded,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (expanded)
+            ControlPlaneCard(
+              compact: true,
+              onLaunchpad: () => onNavigate('/control-plane'),
+            )
+          else
+            NavigationMenuItem(
+              label: 'Launchpad',
+              icon: Icons.space_dashboard_outlined,
+              collapsed: true,
+              active: currentRoute == '/control-plane',
+              onTap: () => onNavigate('/control-plane'),
+            ),
+          const SizedBox(height: 16),
+          for (final destination in primaryDestinations) ...[
+            NavigationMenuItem(
+              label: destination.label,
+              icon: destination.icon,
+              active: currentRoute == destination.route,
+              collapsed: !expanded,
+              onTap: () => onNavigate(destination.route),
+            ),
+            const SizedBox(height: 8),
+          ],
+          _SidebarDivider(expanded: expanded, color: surface.outline),
+          const SizedBox(height: 8),
+          for (final destination in secondaryDestinations) ...[
+            NavigationMenuItem(
+              label: destination.label,
+              icon: destination.icon,
+              active: currentRoute == destination.route,
+              collapsed: !expanded,
+              onTap: () => onNavigate(destination.route),
+            ),
+            const SizedBox(height: 8),
+          ],
+          _SidebarDivider(expanded: expanded, color: surface.outline),
+          const SizedBox(height: 8),
+          NavigationMenuItem(
+            label: 'Runtime',
+            icon: Icons.schedule_rounded,
+            active: currentRoute == '/runtime',
+            collapsed: !expanded,
+            trailing: expanded
+                ? Icon(
+                    runtimeExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                    color: surface.textSecondary,
+                  )
+                : null,
+            onTap: () {
+              onToggleRuntime();
+              onNavigate('/runtime');
+            },
+          ),
+          if (expanded) ...[
+            AnimatedSize(
+              duration: AiMotion.medium,
+              curve: Curves.easeOutCubic,
+              child: runtimeExpanded
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: const RuntimePanel(compact: true),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            const SizedBox(height: 12),
+          ] else
+            const SizedBox(height: 8),
+          NavigationMenuItem(
+            label: 'Session',
+            icon: Icons.history_toggle_off_rounded,
+            active: currentRoute == '/session',
+            collapsed: !expanded,
+            onTap: () => onNavigate('/session'),
+          ),
+          const Spacer(),
+          if (expanded) ...[
+            Text(
+              displayName,
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              activePreset.label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: surface.textSecondary),
+            ),
+            const SizedBox(height: 12),
+          ],
+          NavigationMenuItem(
+            label: 'Logout',
+            icon: Icons.logout_rounded,
+            active: false,
+            collapsed: !expanded,
+            danger: true,
+            onTap: () => onNavigate('/logout'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SidebarDivider extends StatelessWidget {
+  const _SidebarDivider({required this.expanded, required this.color});
+
+  final bool expanded;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!expanded) {
+      return Center(child: Container(width: 24, height: 1, color: color));
+    }
+    return Divider(height: 1, color: color);
+  }
+}
+
+class _GlowOrb extends StatelessWidget {
+  const _GlowOrb({required this.color, required this.size});
+
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(colors: [color, Colors.transparent]),
+        ),
+      ),
     );
   }
 }

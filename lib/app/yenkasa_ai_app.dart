@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../design/ai_tokens.dart';
 import '../core/router/app_router.dart';
 import '../core/theme/app_theme.dart';
-
-final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.dark);
+import '../theme/ai_theme_controller.dart';
 
 class YenkasaAiApp extends ConsumerWidget {
   const YenkasaAiApp({super.key});
@@ -12,14 +12,16 @@ class YenkasaAiApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
-    final themeMode = ref.watch(themeModeProvider);
+    final themePreset = ref.watch(aiThemePresetProvider);
 
     return MaterialApp.router(
       title: 'YenkasaAi',
       debugShowCheckedModeBanner: false,
-      themeMode: themeMode,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
+      themeMode: ThemeMode.dark,
+      theme: AppTheme.dark(themePreset),
+      darkTheme: AppTheme.dark(themePreset),
+      themeAnimationDuration: AiMotion.slow,
+      themeAnimationCurve: Curves.easeOutCubic,
       routerConfig: router,
     );
   }

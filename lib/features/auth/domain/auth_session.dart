@@ -9,6 +9,7 @@ class AuthSession {
     required this.refreshTokenExpiresIn,
     required this.sessionId,
     required this.user,
+    this.authBaseUrl = '',
   });
 
   final String accessToken;
@@ -18,6 +19,7 @@ class AuthSession {
   final int refreshTokenExpiresIn;
   final String sessionId;
   final AuthUser user;
+  final String authBaseUrl;
 
   String get token => accessToken;
 
@@ -44,9 +46,35 @@ class AuthSession {
           int.tryParse(json['refresh_token_expires_in']?.toString() ?? '') ?? 0,
       sessionId:
           json['session_id']?.toString() ?? json['sessionId']?.toString() ?? '',
+      authBaseUrl:
+          json['auth_base_url']?.toString() ??
+          json['authBaseUrl']?.toString() ??
+          '',
       user: json['user'] is Map<String, dynamic>
           ? AuthUser.fromJson(Map<String, dynamic>.from(json['user'] as Map))
           : const AuthUser(id: '', username: '', email: ''),
+    );
+  }
+
+  AuthSession copyWith({
+    String? accessToken,
+    String? refreshToken,
+    String? tokenType,
+    int? accessTokenExpiresIn,
+    int? refreshTokenExpiresIn,
+    String? sessionId,
+    AuthUser? user,
+    String? authBaseUrl,
+  }) {
+    return AuthSession(
+      accessToken: accessToken ?? this.accessToken,
+      refreshToken: refreshToken ?? this.refreshToken,
+      tokenType: tokenType ?? this.tokenType,
+      accessTokenExpiresIn: accessTokenExpiresIn ?? this.accessTokenExpiresIn,
+      refreshTokenExpiresIn: refreshTokenExpiresIn ?? this.refreshTokenExpiresIn,
+      sessionId: sessionId ?? this.sessionId,
+      user: user ?? this.user,
+      authBaseUrl: authBaseUrl ?? this.authBaseUrl,
     );
   }
 
@@ -58,6 +86,7 @@ class AuthSession {
       'access_token_expires_in': accessTokenExpiresIn,
       'refresh_token_expires_in': refreshTokenExpiresIn,
       'session_id': sessionId,
+      'auth_base_url': authBaseUrl,
       'user': user.toJson(),
     };
   }

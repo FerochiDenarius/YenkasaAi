@@ -30,7 +30,8 @@ class AuthUser {
           '',
       username: json['username']?.toString() ?? '',
       email: json['email']?.toString() ?? '',
-      fullName: json['full_name']?.toString() ?? '',
+      fullName:
+          json['full_name']?.toString() ?? json['fullName']?.toString() ?? '',
       country:
           json['country']?.toString() ?? json['location']?.toString() ?? '',
       phoneNumber:
@@ -38,7 +39,10 @@ class AuthUser {
           json['phoneNumber']?.toString() ??
           json['phone']?.toString() ??
           '',
-      signupType: json['signup_type']?.toString() ?? '',
+      signupType:
+          json['signup_type']?.toString() ??
+          json['signupType']?.toString() ??
+          '',
       profileImage:
           json['profile_image']?.toString() ??
           json['profileImage']?.toString() ??
