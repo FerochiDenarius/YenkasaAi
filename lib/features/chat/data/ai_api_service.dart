@@ -63,6 +63,7 @@ class AiApiService {
 
   Stream<ChatStreamFrame> streamChat({
     required String question,
+    required String userId,
     required List<ChatMessage> history,
     required String audience,
     bool includeDebug = false,
@@ -71,6 +72,7 @@ class AiApiService {
       final response = await _dio.post<ResponseBody>(
         '/chat',
         data: {
+          'user_id': userId,
           'question': question,
           'history': history.map((item) => item.toApiJson()).toList(),
           'audience': audience,
@@ -117,6 +119,7 @@ class AiApiService {
 
   Stream<ChatStreamFrame> _streamFromSse(String body) async* {
     var buffer = '';
+
     ChatResponseModel? finalResponse;
 
     for (final line in const LineSplitter().convert(body)) {

@@ -23,12 +23,21 @@ class AuthUser {
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     return AuthUser(
-      id: json['user_id']?.toString() ?? json['id']?.toString() ?? '',
+      id:
+          json['user_id']?.toString() ??
+          json['id']?.toString() ??
+          json['_id']?.toString() ??
+          '',
       username: json['username']?.toString() ?? '',
       email: json['email']?.toString() ?? '',
       fullName: json['full_name']?.toString() ?? '',
-      country: json['country']?.toString() ?? '',
-      phoneNumber: json['phone_number']?.toString() ?? '',
+      country:
+          json['country']?.toString() ?? json['location']?.toString() ?? '',
+      phoneNumber:
+          json['phone_number']?.toString() ??
+          json['phoneNumber']?.toString() ??
+          json['phone']?.toString() ??
+          '',
       signupType: json['signup_type']?.toString() ?? '',
       profileImage:
           json['profile_image']?.toString() ??

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/network/api_exception.dart';
 import '../controllers/auth_controller.dart';
 import '../widgets/auth_controls.dart';
 import '../widgets/auth_shell.dart';
@@ -15,13 +16,13 @@ class LoginPage extends ConsumerStatefulWidget {
 
 class _LoginPageState extends ConsumerState<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _identifierController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -36,20 +37,24 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       await ref
           .read(authControllerProvider.notifier)
           .loginWithYenkasaApp(
-            email: _emailController.text.trim(),
+            identifier: _identifierController.text.trim(),
             password: _passwordController.text,
           );
       if (!mounted) {
         return;
       }
-      context.go('/home');
+      context.go('/chat');
     } catch (error) {
       if (!mounted) {
         return;
       }
+      final message = switch (error) {
+        ApiException apiError => apiError.message,
+        _ => error.toString(),
+      };
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -77,7 +82,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 final hero = _LoginHero(wide: wide);
                 final form = _LoginFormCard(
                   formKey: _formKey,
-                  emailController: _emailController,
+                  identifierController: _identifierController,
                   passwordController: _passwordController,
                   obscurePassword: _obscurePassword,
                   isLoading: isLoading,
@@ -210,7 +215,7 @@ class _LoginHero extends StatelessWidget {
 class _LoginFormCard extends StatelessWidget {
   const _LoginFormCard({
     required this.formKey,
-    required this.emailController,
+    required this.identifierController,
     required this.passwordController,
     required this.obscurePassword,
     required this.isLoading,
@@ -222,7 +227,7 @@ class _LoginFormCard extends StatelessWidget {
   });
 
   final GlobalKey<FormState> formKey;
-  final TextEditingController emailController;
+  final TextEditingController identifierController;
   final TextEditingController passwordController;
   final bool obscurePassword;
   final bool isLoading;
@@ -260,19 +265,16 @@ class _LoginFormCard extends StatelessWidget {
             ),
             const SizedBox(height: 34),
             AuthTextField(
-              controller: emailController,
-              label: 'Email address',
-              hintText: 'Enter your email',
+              controller: identifierController,
+              label: 'Email, username, or phone',
+              hintText: 'Enter your email, username, or phone',
               prefixIcon: Icons.mail_outline_rounded,
-              keyboardType: TextInputType.emailAddress,
+              keyboardType: TextInputType.text,
               textInputAction: TextInputAction.next,
               validator: (value) {
                 final text = (value ?? '').trim();
                 if (text.isEmpty) {
-                  return 'Email is required.';
-                }
-                if (!text.contains('@')) {
-                  return 'Enter a valid email.';
+                  return 'Login identifier is required.';
                 }
                 return null;
               },

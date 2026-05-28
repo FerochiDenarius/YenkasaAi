@@ -29,12 +29,21 @@ class AuthSession {
           json['refresh_token']?.toString() ??
           json['refreshToken']?.toString() ??
           '',
-      tokenType: json['token_type']?.toString() ?? 'bearer',
+      tokenType:
+          json['token_type']?.toString() ??
+          json['tokenType']?.toString() ??
+          'bearer',
       accessTokenExpiresIn:
-          int.tryParse(json['access_token_expires_in']?.toString() ?? '') ?? 0,
+          int.tryParse(
+            json['access_token_expires_in']?.toString() ??
+                json['expires_in']?.toString() ??
+                '',
+          ) ??
+          0,
       refreshTokenExpiresIn:
           int.tryParse(json['refresh_token_expires_in']?.toString() ?? '') ?? 0,
-      sessionId: json['session_id']?.toString() ?? '',
+      sessionId:
+          json['session_id']?.toString() ?? json['sessionId']?.toString() ?? '',
       user: json['user'] is Map<String, dynamic>
           ? AuthUser.fromJson(Map<String, dynamic>.from(json['user'] as Map))
           : const AuthUser(id: '', username: '', email: ''),

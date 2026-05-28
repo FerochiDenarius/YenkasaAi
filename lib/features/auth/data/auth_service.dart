@@ -34,8 +34,11 @@ class AuthService {
           'email': email,
           'password': password,
           'full_name': fullName,
+          'fullName': fullName,
           'country': country,
+          'location': country,
           'phone_number': phoneNumber,
+          'phoneNumber': phoneNumber,
           'signup_type': signupType,
           'preferred_language': preferredLanguage,
           'captcha_code': captchaCode,
@@ -49,13 +52,17 @@ class AuthService {
   }
 
   Future<AuthSession> loginWithYenkasaApp({
-    required String email,
+    required String identifier,
     required String password,
   }) async {
     try {
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/auth/login',
-        data: {'email': email, 'password': password},
+        data: {
+          'identifier': identifier,
+          'email': identifier,
+          'password': password,
+        },
       );
       return AuthSession.fromJson(response.data ?? const {});
     } on DioException catch (error) {
@@ -66,8 +73,8 @@ class AuthService {
   Future<AuthSession> refreshSession(String refreshToken) async {
     try {
       final response = await _dio.post<Map<String, dynamic>>(
-        '/api/auth/refresh',
-        data: {'refresh_token': refreshToken},
+        '/api/auth/token/refresh',
+        data: {'refreshToken': refreshToken, 'refresh_token': refreshToken},
       );
       return AuthSession.fromJson(response.data ?? const {});
     } on DioException catch (error) {

@@ -129,6 +129,7 @@ class ChatController extends StateNotifier<ChatState> {
 
     try {
       await for (final frame in _apiService.streamChat(
+      userId: "YOUR_REAL_USER_ID_HERE",
         question: trimmed,
         history: state.messages
             .where((message) => !message.isStreaming)

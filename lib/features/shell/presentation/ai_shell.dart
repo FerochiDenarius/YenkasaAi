@@ -7,6 +7,8 @@ import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_logo.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../auth/domain/auth_roles.dart';
+import '../../auth/presentation/controllers/auth_controller.dart';
 import '../../health/presentation/health_controller.dart';
 import '../../health/presentation/health_indicator.dart';
 
@@ -35,7 +37,7 @@ const navItems = <NavDestinationItem>[
   ),
   NavDestinationItem(
     route: '/saved-responses',
-    label: 'Saved Responses',
+    label: 'Memory & Saves',
     icon: Icons.bookmark_outline_rounded,
   ),
   NavDestinationItem(
@@ -70,10 +72,29 @@ class AiShell extends ConsumerWidget {
     final isDesktop = MediaQuery.sizeOf(context).width >= 1100;
     final themeMode = ref.watch(themeModeProvider);
     final isChatRoute = currentLocation.startsWith('/chat');
+    final session = ref.watch(authControllerProvider).valueOrNull;
+    final visibleItems = _visibleNavItems(session?.user.role);
+    final displayName = _displayName(session);
+
+    Future<void> handleLogout() async {
+      await ref.read(authControllerProvider.notifier).logout();
+      if (context.mounted) {
+        context.go('/login');
+      }
+    }
 
     final scaffold = Scaffold(
       backgroundColor: Colors.transparent,
-      drawer: isDesktop ? null : const _SidebarDrawer(),
+      drawer: isDesktop
+          ? null
+          : _SidebarDrawer(
+              items: visibleItems,
+              displayName: displayName,
+              onLogout: () async {
+                Navigator.of(context).pop();
+                await handleLogout();
+              },
+            ),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -95,7 +116,12 @@ class AiShell extends ConsumerWidget {
                   if (isDesktop)
                     Padding(
                       padding: const EdgeInsets.all(16),
-                      child: _SidebarPanel(currentLocation: currentLocation),
+                      child: _SidebarPanel(
+                        currentLocation: currentLocation,
+                        items: visibleItems,
+                        displayName: displayName,
+                        onLogout: handleLogout,
+                      ),
                     ),
                   Expanded(
                     child: Padding(
@@ -345,7 +371,15 @@ class AiShell extends ConsumerWidget {
 }
 
 class _SidebarDrawer extends StatelessWidget {
-  const _SidebarDrawer();
+  const _SidebarDrawer({
+    required this.items,
+    required this.displayName,
+    required this.onLogout,
+  });
+
+  final List<NavDestinationItem> items;
+  final String displayName;
+  final Future<void> Function() onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -355,6 +389,9 @@ class _SidebarDrawer extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: _SidebarPanel(
           currentLocation: GoRouterState.of(context).uri.path,
+          items: items,
+          displayName: displayName,
+          onLogout: onLogout,
           scrollable: true,
         ),
       ),
@@ -363,9 +400,18 @@ class _SidebarDrawer extends StatelessWidget {
 }
 
 class _SidebarPanel extends StatelessWidget {
-  const _SidebarPanel({required this.currentLocation, this.scrollable = false});
+  const _SidebarPanel({
+    required this.currentLocation,
+    required this.items,
+    required this.displayName,
+    required this.onLogout,
+    this.scrollable = false,
+  });
 
   final String currentLocation;
+  final List<NavDestinationItem> items;
+  final String displayName;
+  final Future<void> Function() onLogout;
   final bool scrollable;
 
   @override
@@ -435,7 +481,7 @@ class _SidebarPanel extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              for (final item in navItems)
+              for (final item in items)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: _NavButton(
@@ -465,6 +511,48 @@ class _SidebarPanel extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
+              GlassCard(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Session',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        letterSpacing: 1.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      displayName.isEmpty ? 'Signed in user' : displayName,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'End the current session from the control menu.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.white70,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          await onLogout();
+                        },
+                        icon: const Icon(Icons.logout_rounded),
+                        label: const Text('Log out'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -491,6 +579,29 @@ class _SidebarPanel extends StatelessWidget {
       ],
     );
   }
+}
+
+String _displayName(dynamic session) {
+  if (session == null) {
+    return '';
+  }
+  final fullName = session.user.fullName;
+  if (fullName.isNotEmpty) {
+    return fullName;
+  }
+  return session.user.username;
+}
+
+List<NavDestinationItem> _visibleNavItems(String? role) {
+  return navItems.where((item) {
+    if (item.route == '/analytics') {
+      return canAccessAnalyticsRole(role);
+    }
+    if (item.route == '/moderation') {
+      return canAccessModerationRole(role);
+    }
+    return true;
+  }).toList();
 }
 
 class _NavButton extends StatelessWidget {

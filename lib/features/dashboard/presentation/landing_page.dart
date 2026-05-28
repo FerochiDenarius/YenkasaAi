@@ -393,7 +393,7 @@ class _FeatureTile extends StatelessWidget {
                       ),
                     )
                   : Icon(
-                      IconData(item.icon, fontFamily: 'MaterialIcons'),
+                      _iconForFeature(item.icon),
                       color: const Color(0xFF6D28D9),
                     ),
             ),
@@ -423,4 +423,30 @@ class _FeatureTile extends StatelessWidget {
       ),
     );
   }
+}
+
+IconData _iconForFeature(int codePoint) {
+  switch (codePoint) {
+    case 0xe3af:
+      return Icons.gpp_good_outlined;
+    case 0xe838:
+      return Icons.auto_awesome_outlined;
+    case 0xe03e:
+      return Icons.live_tv_outlined;
+    case 0xe88a:
+      return Icons.dynamic_feed_outlined;
+    case 0xe0bf:
+      return Icons.support_agent_outlined;
+    case 0xe8f4:
+      return Icons.health_and_safety_outlined;
+    case 0xe6df:
+      return Icons.trending_up_rounded;
+    case 0xe2bd:
+      return Icons.hub_outlined;
+    case 0xe1b8:
+      return Icons.insights_outlined;
+    case 0xeb8c:
+      return Icons.rocket_launch_outlined;
+  }
+  return Icons.auto_awesome_rounded;
 }
