@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../auth/presentation/controllers/auth_controller.dart';
 import '../data/yme_memory_api_service.dart';
 import '../models/yme_memory_models.dart';
 import 'yme_memory_state.dart';
@@ -15,6 +16,7 @@ class YmeMemoryController extends AutoDisposeAsyncNotifier<YmeMemoryState> {
 
   @override
   Future<YmeMemoryState> build() async {
+    ref.watch(currentAuthUserIdProvider);
     _service = ref.read(ymeMemoryApiServiceProvider);
     final memories = await _service.fetchMemories();
     return YmeMemoryState(memories: memories);
@@ -33,7 +35,9 @@ class YmeMemoryController extends AutoDisposeAsyncNotifier<YmeMemoryState> {
       final memories = await _service.fetchMemories();
       YmeMemorySearchResult? searchResult = current.searchResult;
       if (current.hasActiveSearch) {
-        searchResult = await _service.searchMemories(query: current.searchQuery);
+        searchResult = await _service.searchMemories(
+          query: current.searchQuery,
+        );
       }
       state = AsyncData(
         current.copyWith(
@@ -45,10 +49,7 @@ class YmeMemoryController extends AutoDisposeAsyncNotifier<YmeMemoryState> {
       );
     } catch (error) {
       state = AsyncData(
-        current.copyWith(
-          isRefreshing: false,
-          errorMessage: _messageFor(error),
-        ),
+        current.copyWith(isRefreshing: false, errorMessage: _messageFor(error)),
       );
     }
   }

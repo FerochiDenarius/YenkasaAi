@@ -385,85 +385,95 @@ class _SidebarPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          if (expanded)
-            ControlPlaneCard(
-              compact: true,
-              onLaunchpad: () => onNavigate('/control-plane'),
-            )
-          else
-            NavigationMenuItem(
-              label: 'Launchpad',
-              icon: Icons.space_dashboard_outlined,
-              collapsed: true,
-              active: currentRoute == '/control-plane',
-              onTap: () => onNavigate('/control-plane'),
-            ),
-          const SizedBox(height: 16),
-          for (final destination in primaryDestinations) ...[
-            NavigationMenuItem(
-              label: destination.label,
-              icon: destination.icon,
-              active: currentRoute == destination.route,
-              collapsed: !expanded,
-              onTap: () => onNavigate(destination.route),
-            ),
-            const SizedBox(height: 8),
-          ],
-          _SidebarDivider(expanded: expanded, color: surface.outline),
-          const SizedBox(height: 8),
-          for (final destination in secondaryDestinations) ...[
-            NavigationMenuItem(
-              label: destination.label,
-              icon: destination.icon,
-              active: currentRoute == destination.route,
-              collapsed: !expanded,
-              onTap: () => onNavigate(destination.route),
-            ),
-            const SizedBox(height: 8),
-          ],
-          _SidebarDivider(expanded: expanded, color: surface.outline),
-          const SizedBox(height: 8),
-          NavigationMenuItem(
-            label: 'Runtime',
-            icon: Icons.schedule_rounded,
-            active: currentRoute == '/runtime',
-            collapsed: !expanded,
-            trailing: expanded
-                ? Icon(
-                    runtimeExpanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    size: 18,
-                    color: surface.textSecondary,
-                  )
-                : null,
-            onTap: () {
-              onToggleRuntime();
-              onNavigate('/runtime');
-            },
-          ),
-          if (expanded) ...[
-            AnimatedSize(
-              duration: AiMotion.medium,
-              curve: Curves.easeOutCubic,
-              child: runtimeExpanded
-                  ? Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: const RuntimePanel(compact: true),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.zero,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (expanded)
+                    ControlPlaneCard(
+                      compact: true,
+                      onLaunchpad: () => onNavigate('/control-plane'),
                     )
-                  : const SizedBox.shrink(),
+                  else
+                    NavigationMenuItem(
+                      label: 'Launchpad',
+                      icon: Icons.space_dashboard_outlined,
+                      collapsed: true,
+                      active: currentRoute == '/control-plane',
+                      onTap: () => onNavigate('/control-plane'),
+                    ),
+                  const SizedBox(height: 16),
+                  for (final destination in primaryDestinations) ...[
+                    NavigationMenuItem(
+                      label: destination.label,
+                      icon: destination.icon,
+                      active: currentRoute == destination.route,
+                      collapsed: !expanded,
+                      onTap: () => onNavigate(destination.route),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  _SidebarDivider(expanded: expanded, color: surface.outline),
+                  const SizedBox(height: 8),
+                  for (final destination in secondaryDestinations) ...[
+                    NavigationMenuItem(
+                      label: destination.label,
+                      icon: destination.icon,
+                      active: currentRoute == destination.route,
+                      collapsed: !expanded,
+                      onTap: () => onNavigate(destination.route),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  _SidebarDivider(expanded: expanded, color: surface.outline),
+                  const SizedBox(height: 8),
+                  NavigationMenuItem(
+                    label: 'Runtime',
+                    icon: Icons.schedule_rounded,
+                    active: currentRoute == '/runtime',
+                    collapsed: !expanded,
+                    trailing: expanded
+                        ? Icon(
+                            runtimeExpanded
+                                ? Icons.keyboard_arrow_up_rounded
+                                : Icons.keyboard_arrow_down_rounded,
+                            size: 18,
+                            color: surface.textSecondary,
+                          )
+                        : null,
+                    onTap: () {
+                      onToggleRuntime();
+                      onNavigate('/runtime');
+                    },
+                  ),
+                  if (expanded) ...[
+                    AnimatedSize(
+                      duration: AiMotion.medium,
+                      curve: Curves.easeOutCubic,
+                      child: runtimeExpanded
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: const RuntimePanel(compact: true),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                    const SizedBox(height: 12),
+                  ] else
+                    const SizedBox(height: 8),
+                  NavigationMenuItem(
+                    label: 'Session',
+                    icon: Icons.history_toggle_off_rounded,
+                    active: currentRoute == '/session',
+                    collapsed: !expanded,
+                    onTap: () => onNavigate('/session'),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-          ] else
-            const SizedBox(height: 8),
-          NavigationMenuItem(
-            label: 'Session',
-            icon: Icons.history_toggle_off_rounded,
-            active: currentRoute == '/session',
-            collapsed: !expanded,
-            onTap: () => onNavigate('/session'),
           ),
-          const Spacer(),
+          const SizedBox(height: 12),
           if (expanded) ...[
             Text(
               displayName,

@@ -49,4 +49,5 @@ class AppConfig {
       aiApiBaseUrl.trim() == publicAiEngineBaseUrl.trim();
 
   static String get canonicalAuthBackendBaseUrl => authApiBaseUrl.trim();
+  static String get canonicalAiBackendBaseUrl => aiApiBaseUrl.trim();
 }

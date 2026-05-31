@@ -7,6 +7,12 @@ import '../../domain/auth_session.dart';
 
 final authBootstrapCompleteProvider = StateProvider<bool>((ref) => false);
 
+final currentAuthUserIdProvider = Provider<String?>((ref) {
+  final session = ref.watch(authControllerProvider).valueOrNull;
+  final userId = session?.user.id.trim() ?? '';
+  return userId.isEmpty ? null : userId;
+});
+
 final authControllerProvider =
     AsyncNotifierProvider<AuthController, AuthSession?>(AuthController.new);
 

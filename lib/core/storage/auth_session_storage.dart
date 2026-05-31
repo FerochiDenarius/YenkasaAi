@@ -147,19 +147,19 @@ class AuthSessionStorage {
   }
 
   AuthSession _normalizeSession(AuthSession session) {
-    final canonicalBaseUrl = AppConfig.canonicalAiBackendBaseUrl;
-    if (canonicalBaseUrl.isEmpty) {
+    final normalizedStored = _normalizeBaseUrl(session.authBaseUrl);
+    if (normalizedStored.isNotEmpty) {
       return session;
     }
 
-    final normalizedStored = _normalizeBaseUrl(session.authBaseUrl);
+    final canonicalBaseUrl = AppConfig.canonicalAuthBackendBaseUrl;
     final normalizedCanonical = _normalizeBaseUrl(canonicalBaseUrl);
-    if (normalizedStored == normalizedCanonical) {
+    if (normalizedCanonical.isEmpty) {
       return session;
     }
 
     developer.log(
-      'auth session backend migrated from=${session.authBaseUrl} to=$canonicalBaseUrl',
+      'auth session backend defaulted to=$canonicalBaseUrl',
       name: 'auth_storage',
     );
     return session.copyWith(authBaseUrl: canonicalBaseUrl);

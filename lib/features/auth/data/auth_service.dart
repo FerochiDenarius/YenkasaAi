@@ -62,12 +62,21 @@ class AuthService {
     required String identifier,
     required String password,
   }) async {
-    final email = identifier.trim().toLowerCase();
-    final payload = {'email': email, 'password': password};
+    final normalizedIdentifier = identifier.trim();
+    final emailPayload = {
+      'email': normalizedIdentifier.toLowerCase(),
+      'password': password,
+    };
+    final identifierPayload = {
+      'identifier': normalizedIdentifier,
+      'password': password,
+    };
     return _requestSessionWithFallback(
       primaryRequest: () =>
-          _postSession(_legacyDio, '/api/auth/login', payload),
-      fallbackRequests: [() => _postSession(_dio, '/api/auth/login', payload)],
+          _postSession(_legacyDio, '/api/auth/login', emailPayload),
+      fallbackRequests: [
+        () => _postSession(_dio, '/api/auth/login', identifierPayload),
+      ],
     );
   }
 

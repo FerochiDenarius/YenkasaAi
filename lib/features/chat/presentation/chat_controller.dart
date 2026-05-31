@@ -2,13 +2,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/network/user_facing_error.dart';
+import '../../auth/presentation/controllers/auth_controller.dart';
 import '../data/ai_api_service.dart';
 import '../models/chat_message.dart';
 import '../models/chat_models.dart';
 
 final chatControllerProvider = StateNotifierProvider<ChatController, ChatState>(
   (ref) {
-    return ChatController(ref.watch(aiApiServiceProvider));
+    final accountScope = ref.watch(currentAuthUserIdProvider) ?? 'guest';
+    return ChatController(
+      ref.watch(aiApiServiceProvider),
+      accountScope: accountScope,
+    );
   },
 );
 
@@ -66,13 +71,14 @@ class ChatState {
 }
 
 class ChatController extends StateNotifier<ChatState> {
-  ChatController(this._apiService)
-    : super(
+  ChatController(this._apiService, {required String accountScope})
+    : _accountScope = accountScope,
+      super(
         ChatState(
           audience: AppConfig.defaultAudience,
-          messages: const [
+          messages: [
             ChatMessage(
-              id: 'welcome-public',
+              id: 'welcome-public-$accountScope',
               role: ChatRole.assistant,
               content:
                   'YenkasaAI is online. Ask about YKC, ranks, verification, communities, Live Arena, creator growth, or user safety.',
@@ -82,13 +88,14 @@ class ChatController extends StateNotifier<ChatState> {
       );
 
   final AiApiService _apiService;
+  final String _accountScope;
 
   Future<void> setAudience(String nextAudience) async {
     state = ChatState(
       audience: nextAudience,
       messages: [
         ChatMessage(
-          id: 'welcome-$nextAudience',
+          id: 'welcome-$nextAudience-$_accountScope',
           role: ChatRole.assistant,
           content: nextAudience == 'engineering'
               ? 'YenkasaAI is online. Ask about distributed systems, livestream scale, moderation workflows, mobile optimization, or ingestion architecture.'
