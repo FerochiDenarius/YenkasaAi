@@ -29,6 +29,11 @@ class ChatAttachment {
   final String kind;
 
   String get promptLine => '- $name ($kind)';
+
+  bool get supportsOcr {
+    final extension = name.split('.').last.toLowerCase();
+    return {'jpg', 'jpeg', 'png', 'webp', 'pdf'}.contains(extension);
+  }
 }
 
 class ChatState {
@@ -158,8 +163,8 @@ class ChatController extends StateNotifier<ChatState> {
 
     final attachmentContext = attachments.isEmpty
         ? ''
-        : '\n\nAttached files for analysis:\n${attachments.map((item) => item.promptLine).join('\n')}\n\nUse the attachment names and file types as context. If file binary extraction is required, explain what needs to be ingested or uploaded next.';
-    final questionWithAttachments = '$trimmed$attachmentContext'.trim();
+        : '\n\nAttached files for analysis:\n${attachments.map((item) => item.promptLine).join('\n')}';
+    final initialQuestion = '$trimmed$attachmentContext'.trim();
     final displayText = attachments.isEmpty
         ? trimmed
         : '$trimmed\n\n${attachments.map((item) => item.promptLine).join('\n')}';
@@ -170,7 +175,7 @@ class ChatController extends StateNotifier<ChatState> {
       content: displayText,
       createdAt: DateTime.now(),
       audience: state.audience,
-      question: questionWithAttachments,
+      question: initialQuestion,
     );
     final placeholder = ChatMessage(
       id: '${userMessage.id}-assistant',
@@ -179,7 +184,7 @@ class ChatController extends StateNotifier<ChatState> {
       isStreaming: true,
       createdAt: DateTime.now(),
       audience: state.audience,
-      question: questionWithAttachments,
+      question: initialQuestion,
     );
 
     final baseMessages = [...state.messages, userMessage, placeholder];
@@ -187,7 +192,7 @@ class ChatController extends StateNotifier<ChatState> {
       messages: baseMessages,
       isSending: true,
       clearError: true,
-      lastQuestion: questionWithAttachments,
+      lastQuestion: initialQuestion,
       pendingAttachments: const [],
       sources: const [],
       answerCards: const [],
@@ -196,6 +201,11 @@ class ChatController extends StateNotifier<ChatState> {
     );
 
     try {
+      final questionWithAttachments = await _buildQuestionWithAttachmentText(
+        trimmed,
+        attachments,
+      );
+      state = state.copyWith(lastQuestion: questionWithAttachments);
       await for (final frame in _apiService.streamChat(
         question: questionWithAttachments,
         history: state.messages
@@ -272,5 +282,59 @@ class ChatController extends StateNotifier<ChatState> {
     await sendMessage(
       'Continue the previous answer without repeating earlier content. Preserve the same context and keep the reply focused on the last question: $lastQuestion',
     );
+  }
+
+  Future<String> _buildQuestionWithAttachmentText(
+    String question,
+    List<ChatAttachment> attachments,
+  ) async {
+    if (attachments.isEmpty) {
+      return question;
+    }
+
+    final lines = <String>[];
+    final ocrResults = <String>[];
+    final unsupported = <String>[];
+    for (final attachment in attachments) {
+      lines.add(attachment.promptLine);
+      if (!attachment.supportsOcr) {
+        unsupported.add(attachment.promptLine);
+        continue;
+      }
+      final result = await _apiService.analyzeAttachmentWithOcr(
+        path: attachment.path,
+        fileName: attachment.name,
+        question: question.isEmpty ? 'Analyze this uploaded file.' : question,
+      );
+      ocrResults.add(
+        [
+          'File: ${attachment.name}',
+          'Type: ${attachment.kind}',
+          'Language: ${result.language}',
+          'Confidence: ${result.confidence.toStringAsFixed(2)}',
+          'Summary: ${result.summary}',
+          'Extracted text:',
+          result.text.trim().isEmpty
+              ? '[No readable text detected]'
+              : result.text.trim(),
+        ].join('\n'),
+      );
+    }
+
+    return [
+      if (question.trim().isNotEmpty) question.trim(),
+      'Attached files:',
+      ...lines,
+      if (ocrResults.isNotEmpty) ...[
+        '',
+        'Google Vision OCR extracted content:',
+        ocrResults.join('\n\n---\n\n'),
+      ],
+      if (unsupported.isNotEmpty) ...[
+        '',
+        'Files not processed by OCR yet:',
+        ...unsupported,
+      ],
+    ].join('\n');
   }
 }

@@ -35,7 +35,7 @@ class RuntimePage extends StatelessWidget {
           children: const [
             _RuntimeInfoCard(
               label: 'Auth Provider',
-              value: 'Yenkasa Auth + Legacy Fallback',
+              value: 'YenkasaAI Cloud Run',
             ),
             _RuntimeInfoCard(
               label: 'AI Backend',

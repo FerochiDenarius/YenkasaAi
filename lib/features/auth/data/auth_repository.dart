@@ -115,7 +115,6 @@ class AuthRepository {
       );
       final updated = await _service.refreshSessionForBaseUrl(
         refreshToken,
-        authBaseUrl: current.authBaseUrl,
       );
       final merged = _mergeSession(current, updated);
       await _storage.save(merged);

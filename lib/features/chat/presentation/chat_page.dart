@@ -10,7 +10,6 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/metric_card.dart';
 import '../../../core/widgets/section_header.dart';
-import '../../../core/widgets/status_chip.dart';
 import '../../../services/mock_dashboard_data.dart';
 import '../actions/ai_message_actions_layer.dart';
 import '../models/chat_message.dart';
@@ -115,26 +114,36 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Future<void> _pickChatFiles() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'docx'],
-      allowMultiple: true,
-      withData: false,
-    );
-    if (result == null || result.files.isEmpty) return;
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'docx'],
+        allowMultiple: true,
+        withData: false,
+        lockParentWindow: true,
+      );
+      if (result == null || result.files.isEmpty) return;
 
-    final attachments = result.files
-        .where((file) => (file.path ?? '').isNotEmpty)
-        .map(
-          (file) => ChatAttachment(
-            name: file.name,
-            path: file.path!,
-            kind: _attachmentKind(file.name),
-          ),
-        )
-        .toList(growable: false);
+      final attachments = result.files
+          .where((file) => (file.path ?? '').isNotEmpty)
+          .map(
+            (file) => ChatAttachment(
+              name: file.name,
+              path: file.path!,
+              kind: _attachmentKind(file.name),
+            ),
+          )
+          .toList(growable: false);
 
-    ref.read(chatControllerProvider.notifier).addAttachments(attachments);
+      if (attachments.isEmpty) {
+        _showPickerMessage('Selected files could not be read.');
+        return;
+      }
+
+      ref.read(chatControllerProvider.notifier).addAttachments(attachments);
+    } catch (error) {
+      _showPickerMessage('File picker could not open: $error');
+    }
   }
 
   Future<void> _captureChatImage() async {
@@ -158,6 +167,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         SnackBar(content: Text('Camera is not available: $error')),
       );
     }
+  }
+
+  void _showPickerMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _attachmentKind(String name) {
@@ -300,9 +316,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        _ComposerIconButton(
+                        _ComposerActionButton(
+                          label: 'Add file',
                           tooltip: 'Attach image, PDF, or DOCX',
-                          icon: Icons.attach_file_rounded,
+                          icon: Icons.add_rounded,
                           onPressed: state.isSending ? null : _pickChatFiles,
                         ),
                         _ComposerIconButton(
@@ -332,9 +349,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   runSpacing: 10,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    _ComposerIconButton(
+                    _ComposerActionButton(
+                      label: 'Add file',
                       tooltip: 'Attach image, PDF, or DOCX',
-                      icon: Icons.attach_file_rounded,
+                      icon: Icons.add_rounded,
                       onPressed: state.isSending ? null : _pickChatFiles,
                     ),
                     _ComposerIconButton(
@@ -669,9 +687,9 @@ class _MinimalComposer extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.08),
             ),
             child: IconButton(
-              tooltip: 'Attach image, PDF, or DOCX',
+              tooltip: 'Add file',
               onPressed: isSending ? null : onPickFiles,
-              icon: const Icon(Icons.attach_file_rounded, color: Colors.white),
+              icon: const Icon(Icons.add_rounded, color: Colors.white),
             ),
           ),
           const SizedBox(width: 8),
@@ -813,6 +831,32 @@ class _ComposerIconButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: IconButton.filledTonal(onPressed: onPressed, icon: Icon(icon)),
+    );
+  }
+}
+
+class _ComposerActionButton extends StatelessWidget {
+  const _ComposerActionButton({
+    required this.label,
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String label;
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: FilledButton.tonalIcon(
+        onPressed: onPressed,
+        icon: Icon(icon),
+        label: Text(label),
+      ),
     );
   }
 }

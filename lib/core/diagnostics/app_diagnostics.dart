@@ -23,7 +23,6 @@ void logStartupDiagnostics() {
     'authApiBaseUrl=${AppConfig.authApiBaseUrl} '
     'aiApiBaseUrl=${AppConfig.aiApiBaseUrl} '
     'publicAiEngineBaseUrl=${AppConfig.publicAiEngineBaseUrl} '
-    'yenkasaAppBackendBaseUrl=${AppConfig.yenkasaAppBackendBaseUrl} '
     'usesUnifiedAiBackend=${AppConfig.usesUnifiedAiBackend}',
     name: 'app_diagnostics',
   );

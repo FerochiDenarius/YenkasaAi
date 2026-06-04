@@ -14,10 +14,6 @@ final authApiClientProvider = Provider<Dio>((ref) {
   return _buildClient(ref, baseUrl: AppConfig.authApiBaseUrl);
 });
 
-final legacyAuthApiClientProvider = Provider<Dio>((ref) {
-  return _buildClient(ref, baseUrl: AppConfig.legacyAuthApiBaseUrl);
-});
-
 Dio buildPlainDio({required String baseUrl}) {
   return Dio(
     BaseOptions(
@@ -184,113 +180,16 @@ Future<AuthSession> _refreshAccessToken({
   required String refreshToken,
   AuthSession? current,
 }) async {
-  final candidates = _buildRefreshCandidates(
-    refreshToken: refreshToken,
-    authBaseUrl: current?.authBaseUrl,
+  final dio = buildPlainDio(
+    baseUrl: current?.authBaseUrl.trim().isNotEmpty == true
+        ? current!.authBaseUrl
+        : AppConfig.authApiBaseUrl,
   );
-
-  DioException? lastError;
-  for (final candidate in candidates) {
-    try {
-      final response = await candidate.dio.post<Map<String, dynamic>>(
-        candidate.path,
-        data: candidate.payload,
-      );
-      return AuthSession.fromJson(
-        response.data ?? const {},
-      ).copyWith(authBaseUrl: candidate.dio.options.baseUrl);
-    } on DioException catch (error) {
-      if (!_shouldTryNextRefreshCandidate(error, candidate: candidate)) {
-        rethrow;
-      }
-      lastError = error;
-    }
-  }
-
-  throw lastError ??
-      DioException(
-        requestOptions: RequestOptions(path: '/auth/refresh'),
-        message: 'No refresh route succeeded.',
-      );
-}
-
-List<_RefreshCandidate> _buildRefreshCandidates({
-  required String refreshToken,
-  String? authBaseUrl,
-}) {
-  final preferredBaseUrl = _normalizeBaseUrl(authBaseUrl);
-  final authBaseUrlNormalized = _normalizeBaseUrl(AppConfig.authApiBaseUrl);
-  final legacyBaseUrlNormalized = _normalizeBaseUrl(
-    AppConfig.legacyAuthApiBaseUrl,
+  final response = await dio.post<Map<String, dynamic>>(
+    '/api/auth/refresh',
+    data: {'refresh_token': refreshToken, 'refreshToken': refreshToken},
   );
-
-  final orderedBaseUrls = preferredBaseUrl.isNotEmpty
-      ? <String>[preferredBaseUrl]
-      : <String>[
-          legacyBaseUrlNormalized,
-          if (legacyBaseUrlNormalized != authBaseUrlNormalized)
-            authBaseUrlNormalized,
-        ];
-
-  final uniqueBaseUrls = <String>{};
-  final candidates = <_RefreshCandidate>[];
-  for (final baseUrl in orderedBaseUrls) {
-    if (!uniqueBaseUrls.add(baseUrl)) continue;
-    final dio = buildPlainDio(baseUrl: baseUrl);
-    final isLegacy = baseUrl == legacyBaseUrlNormalized;
-    final isPrimary = baseUrl == authBaseUrlNormalized;
-
-    if (AppConfig.usesUnifiedAiBackend || isLegacy) {
-      candidates.add(
-        _RefreshCandidate(
-          dio: dio,
-          path: '/api/auth/refresh',
-          payload: {
-            'refresh_token': refreshToken,
-            'refreshToken': refreshToken,
-          },
-        ),
-      );
-      continue;
-    }
-
-    if (isPrimary) {
-      candidates.add(
-        _RefreshCandidate(
-          dio: dio,
-          path: '/api/verify',
-          payload: {'refreshToken': refreshToken},
-        ),
-      );
-    }
-  }
-
-  return candidates;
-}
-
-bool _shouldTryNextRefreshCandidate(
-  DioException error, {
-  required _RefreshCandidate candidate,
-}) {
-  final statusCode = error.response?.statusCode;
-  if (statusCode == 401 || statusCode == 403) {
-    return false;
-  }
-  return candidate.path != '/api/auth/refresh' || statusCode == 404;
-}
-
-String _normalizeBaseUrl(String? value) {
-  return (value ?? '').trim().replaceAll(RegExp(r'/+$'), '');
-}
-
-class _RefreshCandidate {
-  const _RefreshCandidate({
-    required this.dio,
-    required this.path,
-    required this.payload,
-  });
-
-  final Dio dio;
-  final String path;
-  final Map<String, dynamic> payload;
+  return AuthSession.fromJson(
+    response.data ?? const {},
+  ).copyWith(authBaseUrl: dio.options.baseUrl);
 }

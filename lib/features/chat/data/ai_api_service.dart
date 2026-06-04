@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http_parser/http_parser.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/network/api_client.dart';
@@ -60,6 +61,43 @@ class IngestionUploadResult {
   final bool? uploadedToGcs;
 }
 
+class OcrAnalysisResult {
+  const OcrAnalysisResult({
+    required this.text,
+    required this.confidence,
+    required this.language,
+    required this.summary,
+    required this.fileName,
+    required this.contentType,
+    required this.blockCount,
+    required this.cached,
+  });
+
+  factory OcrAnalysisResult.fromJson(Map<String, dynamic> json) {
+    final blocks = json['blocks'];
+    return OcrAnalysisResult(
+      text: (json['text'] ?? '').toString(),
+      confidence: _readDouble(json['confidence']),
+      language: (json['language'] ?? 'unknown').toString(),
+      summary: (json['summary'] ?? '').toString(),
+      fileName: (json['fileName'] ?? json['file_name'] ?? '').toString(),
+      contentType: (json['contentType'] ?? json['content_type'] ?? '')
+          .toString(),
+      blockCount: blocks is List ? blocks.length : 0,
+      cached: json['cached'] == true,
+    );
+  }
+
+  final String text;
+  final double confidence;
+  final String language;
+  final String summary;
+  final String fileName;
+  final String contentType;
+  final int blockCount;
+  final bool cached;
+}
+
 int _readInt(Object? value) {
   if (value is int) return value;
   if (value is num) return value.toInt();
@@ -69,6 +107,12 @@ int _readInt(Object? value) {
 int? _readNullableInt(Object? value) {
   if (value == null) return null;
   return _readInt(value);
+}
+
+double _readDouble(Object? value) {
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? 0;
 }
 
 class AiApiService {
@@ -130,6 +174,51 @@ class AiApiService {
     } on DioException catch (error) {
       throw _mapDioError(error);
     }
+  }
+
+  Future<OcrAnalysisResult> analyzeAttachmentWithOcr({
+    required String path,
+    required String fileName,
+    required String question,
+  }) async {
+    final contentType = _contentTypeForFile(fileName);
+    if (contentType == null) {
+      throw ApiException('OCR is not available for $fileName.');
+    }
+
+    try {
+      final formData = FormData.fromMap({
+        'question': question,
+        'file': await MultipartFile.fromFile(
+          path,
+          filename: fileName,
+          contentType: contentType,
+        ),
+      });
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/ocr/analyze',
+        data: formData,
+        options: Options(
+          contentType: 'multipart/form-data',
+          sendTimeout: const Duration(minutes: 3),
+          receiveTimeout: const Duration(minutes: 5),
+        ),
+      );
+      return OcrAnalysisResult.fromJson(response.data ?? const {});
+    } on DioException catch (error) {
+      throw _mapDioError(error);
+    }
+  }
+
+  MediaType? _contentTypeForFile(String fileName) {
+    final extension = fileName.split('.').last.toLowerCase();
+    return switch (extension) {
+      'jpg' || 'jpeg' => MediaType('image', 'jpeg'),
+      'png' => MediaType('image', 'png'),
+      'webp' => MediaType('image', 'webp'),
+      'pdf' => MediaType('application', 'pdf'),
+      _ => null,
+    };
   }
 
   Stream<ChatStreamFrame> streamChat({

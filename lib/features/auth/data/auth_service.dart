@@ -1,25 +1,18 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/config/app_config.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../domain/auth_session.dart';
 
 final authServiceProvider = Provider<AuthService>((ref) {
-  return AuthService(
-    ref.watch(authApiClientProvider),
-    legacyDio: buildPlainDio(baseUrl: AppConfig.legacyAuthApiBaseUrl),
-  );
+  return AuthService(ref.watch(authApiClientProvider));
 });
 
 class AuthService {
-  AuthService(this._dio, {Dio? legacyDio})
-    : _legacyDio =
-          legacyDio ?? buildPlainDio(baseUrl: AppConfig.legacyAuthApiBaseUrl);
+  AuthService(this._dio);
 
   final Dio _dio;
-  final Dio _legacyDio;
 
   Future<AuthSession> registerWithYenkasaApp({
     required String username,
@@ -33,23 +26,23 @@ class AuthService {
     required bool agreeToTerms,
     String preferredLanguage = 'en',
   }) async {
+    final _ = (
+      username: username,
+      country: country,
+      phoneNumber: phoneNumber,
+      signupType: signupType,
+      captchaCode: captchaCode,
+      agreeToTerms: agreeToTerms,
+      preferredLanguage: preferredLanguage,
+    );
     try {
       final response = await _dio.post<Map<String, dynamic>>(
         '/api/auth/register',
         data: {
-          'username': username,
           'email': email,
           'password': password,
           'full_name': fullName,
           'fullName': fullName,
-          'country': country,
-          'location': country,
-          'phone_number': phoneNumber,
-          'phoneNumber': phoneNumber,
-          'signup_type': signupType,
-          'preferred_language': preferredLanguage,
-          'captcha_code': captchaCode,
-          'agree_to_terms': agreeToTerms,
         },
       );
       return AuthSession.fromJson(response.data ?? const {});
@@ -63,85 +56,23 @@ class AuthService {
     required String password,
   }) async {
     final normalizedIdentifier = identifier.trim();
-    final emailPayload = {
+    final payload = {
       'email': normalizedIdentifier.toLowerCase(),
-      'password': password,
-    };
-    final identifierPayload = {
       'identifier': normalizedIdentifier,
       'password': password,
     };
-    return _requestSessionWithFallback(
-      primaryRequest: () =>
-          _postSession(_legacyDio, '/api/auth/login', emailPayload),
-      fallbackRequests: [
-        () => _postSession(_dio, '/api/auth/login', identifierPayload),
-      ],
-    );
+    return _postSession(_dio, '/api/auth/login', payload);
   }
 
   Future<AuthSession> refreshSession(String refreshToken) async {
-    return refreshSessionForBaseUrl(refreshToken, authBaseUrl: '');
+    return refreshSessionForBaseUrl(refreshToken);
   }
 
-  Future<AuthSession> refreshSessionForBaseUrl(
-    String refreshToken, {
-    required String authBaseUrl,
-  }) async {
-    final normalizedRequestedBaseUrl = _normalizeBaseUrl(authBaseUrl);
-    final normalizedPrimaryBaseUrl = _normalizeBaseUrl(_dio.options.baseUrl);
-    final normalizedLegacyBaseUrl = _normalizeBaseUrl(
-      _legacyDio.options.baseUrl,
-    );
-
-    final candidates = <Future<AuthSession> Function()>[];
-
-    void addLegacyRefresh() {
-      candidates.add(
-        () => _postSession(_legacyDio, '/api/auth/refresh', {
-          'refresh_token': refreshToken,
-          'refreshToken': refreshToken,
-        }),
-      );
-    }
-
-    void addPrimaryRefresh() {
-      if (AppConfig.usesUnifiedAiBackend) {
-        addLegacyRefresh();
-        return;
-      }
-      candidates.add(
-        () => _postSession(_dio, '/api/verify', {'refreshToken': refreshToken}),
-      );
-    }
-
-    if (normalizedRequestedBaseUrl == normalizedLegacyBaseUrl) {
-      addLegacyRefresh();
-    } else if (normalizedRequestedBaseUrl == normalizedPrimaryBaseUrl) {
-      addPrimaryRefresh();
-    } else {
-      addLegacyRefresh();
-      if (normalizedLegacyBaseUrl != normalizedPrimaryBaseUrl) {
-        addPrimaryRefresh();
-      }
-    }
-
-    ApiException? lastFailure;
-    for (final request in candidates) {
-      try {
-        return await request();
-      } on DioException catch (error) {
-        final failure = _mapError(error);
-        lastFailure = failure;
-        if (!_shouldTryNextRefreshCandidate(error)) {
-          throw failure;
-        }
-      } on ApiException catch (error) {
-        lastFailure = error;
-      }
-    }
-
-    throw lastFailure ?? const ApiException('Authentication failed.');
+  Future<AuthSession> refreshSessionForBaseUrl(String refreshToken) async {
+    return _postSession(_dio, '/api/auth/refresh', {
+      'refresh_token': refreshToken,
+      'refreshToken': refreshToken,
+    });
   }
 
   ApiException _mapError(DioException error) {
@@ -159,50 +90,6 @@ class AuthService {
       error.message ?? 'Login failed.',
       statusCode: error.response?.statusCode,
     );
-  }
-
-  Future<AuthSession> _requestSessionWithFallback({
-    required Future<AuthSession> Function() primaryRequest,
-    required List<Future<AuthSession> Function()> fallbackRequests,
-  }) async {
-    ApiException? primaryFailure;
-
-    try {
-      return await primaryRequest();
-    } on DioException catch (error) {
-      primaryFailure = _mapError(error);
-    } on ApiException catch (error) {
-      primaryFailure = error;
-    }
-
-    if (_sameAuthTargets) {
-      throw primaryFailure;
-    }
-
-    ApiException? lastFailure = primaryFailure;
-    for (final request in fallbackRequests) {
-      try {
-        return await request();
-      } on DioException catch (error) {
-        lastFailure = _mapError(error);
-      } on ApiException catch (error) {
-        lastFailure = error;
-      }
-    }
-
-    throw lastFailure ?? const ApiException('Authentication failed.');
-  }
-
-  bool get _sameAuthTargets =>
-      _dio.options.baseUrl.trim() == _legacyDio.options.baseUrl.trim();
-
-  bool _shouldTryNextRefreshCandidate(DioException error) {
-    final statusCode = error.response?.statusCode;
-    return statusCode != 401 && statusCode != 403;
-  }
-
-  String _normalizeBaseUrl(String value) {
-    return value.trim().replaceAll(RegExp(r'/+$'), '');
   }
 
   Future<AuthSession> _postSession(

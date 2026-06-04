@@ -19,13 +19,13 @@ void main() {
   testWidgets('ingestion page exposes PDF selection action', (tester) async {
     await tester.pumpWidget(
       const ProviderScope(
-        child: MaterialApp(
-          home: Scaffold(body: SingleChildScrollView(child: IngestionPage())),
-        ),
+        child: MaterialApp(home: Scaffold(body: IngestionPage())),
       ),
     );
 
     expect(find.text('Knowledge ingestion control surface'), findsOneWidget);
+    expect(find.byType(SingleChildScrollView), findsAtLeastNWidgets(1));
+    expect(find.byType(Scrollbar), findsOneWidget);
     expect(find.text('Select PDF files'), findsOneWidget);
   });
 }

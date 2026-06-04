@@ -104,15 +104,27 @@ class ModerationPage extends StatelessWidget {
                                   spacing: 12,
                                   children: [
                                     FilledButton(
-                                      onPressed: () {},
+                                      onPressed: () => _showPendingAction(
+                                        context,
+                                        'Approve action',
+                                        item.title,
+                                      ),
                                       child: const Text('Approve action'),
                                     ),
                                     OutlinedButton(
-                                      onPressed: () {},
+                                      onPressed: () => _showPendingAction(
+                                        context,
+                                        'Escalate',
+                                        item.title,
+                                      ),
                                       child: const Text('Escalate'),
                                     ),
                                     TextButton(
-                                      onPressed: () {},
+                                      onPressed: () => _showPendingAction(
+                                        context,
+                                        item.action,
+                                        item.title,
+                                      ),
                                       child: Text(item.action),
                                     ),
                                   ],
@@ -176,6 +188,20 @@ class ModerationPage extends StatelessWidget {
           },
         ),
       ],
+    );
+  }
+
+  void _showPendingAction(
+    BuildContext context,
+    String action,
+    String itemTitle,
+  ) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '$action is not connected to a moderation API yet: $itemTitle',
+        ),
+      ),
     );
   }
 }
