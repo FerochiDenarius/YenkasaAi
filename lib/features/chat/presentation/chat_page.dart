@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/glass_card.dart';
@@ -30,6 +32,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   Timer? _autoScrollTimer;
   bool _stickToBottom = true;
   bool _isAutoScrolling = false;
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
@@ -111,6 +114,60 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     }
   }
 
+  Future<void> _pickChatFiles() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'docx'],
+      allowMultiple: true,
+      withData: false,
+    );
+    if (result == null || result.files.isEmpty) return;
+
+    final attachments = result.files
+        .where((file) => (file.path ?? '').isNotEmpty)
+        .map(
+          (file) => ChatAttachment(
+            name: file.name,
+            path: file.path!,
+            kind: _attachmentKind(file.name),
+          ),
+        )
+        .toList(growable: false);
+
+    ref.read(chatControllerProvider.notifier).addAttachments(attachments);
+  }
+
+  Future<void> _captureChatImage() async {
+    try {
+      final image = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 86,
+        maxWidth: 2048,
+      );
+      if (image == null) return;
+      ref.read(chatControllerProvider.notifier).addAttachments([
+        ChatAttachment(
+          name: image.name,
+          path: image.path,
+          kind: 'camera image',
+        ),
+      ]);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Camera is not available: $error')),
+      );
+    }
+  }
+
+  String _attachmentKind(String name) {
+    final extension = name.split('.').last.toLowerCase();
+    if (extension == 'pdf') return 'PDF';
+    if (extension == 'docx') return 'DOCX';
+    if ({'jpg', 'jpeg', 'png', 'webp'}.contains(extension)) return 'image';
+    return 'file';
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(chatControllerProvider);
@@ -133,7 +190,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         void submitQuestion() {
           if (state.isSending) return;
           final text = _controller.text.trim();
-          if (text.isEmpty) return;
+          if (text.isEmpty && state.pendingAttachments.isEmpty) return;
           _stickToBottom = true;
           controller.sendMessage(text);
           _controller.clear();
@@ -174,6 +231,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       hintText: 'Ask anything about Yenkasa...',
                       onSubmit: submitQuestion,
                       isSending: state.isSending,
+                      attachments: state.pendingAttachments,
+                      onPickFiles: _pickChatFiles,
+                      onCamera: _captureChatImage,
+                      onRemoveAttachment: controller.removeAttachment,
                     ),
                   ),
                 ],
@@ -225,20 +286,45 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 ),
               ),
               SizedBox(height: compactComposer ? 10 : 14),
+              _AttachmentTray(
+                attachments: state.pendingAttachments,
+                onRemove: controller.removeAttachment,
+              ),
+              if (state.pendingAttachments.isNotEmpty)
+                SizedBox(height: compactComposer ? 10 : 14),
               if (compactComposer)
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: state.isSending ? null : submitQuestion,
-                    icon: Icon(
-                      state.isSending
-                          ? Icons.hourglass_top_rounded
-                          : Icons.send_rounded,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _ComposerIconButton(
+                          tooltip: 'Attach image, PDF, or DOCX',
+                          icon: Icons.attach_file_rounded,
+                          onPressed: state.isSending ? null : _pickChatFiles,
+                        ),
+                        _ComposerIconButton(
+                          tooltip: 'Open camera',
+                          icon: Icons.photo_camera_outlined,
+                          onPressed: state.isSending ? null : _captureChatImage,
+                        ),
+                      ],
                     ),
-                    label: Text(
-                      state.isSending ? 'Thinking...' : 'Send to YenkasaAI',
+                    const SizedBox(height: 10),
+                    FilledButton.icon(
+                      onPressed: state.isSending ? null : submitQuestion,
+                      icon: Icon(
+                        state.isSending
+                            ? Icons.hourglass_top_rounded
+                            : Icons.send_rounded,
+                      ),
+                      label: Text(
+                        state.isSending ? 'Thinking...' : 'Send to YenkasaAI',
+                      ),
                     ),
-                  ),
+                  ],
                 )
               else
                 Wrap(
@@ -246,13 +332,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   runSpacing: 10,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    const StatusChip(
-                      label: 'Voice input ready next',
-                      tone: StatusTone.info,
+                    _ComposerIconButton(
+                      tooltip: 'Attach image, PDF, or DOCX',
+                      icon: Icons.attach_file_rounded,
+                      onPressed: state.isSending ? null : _pickChatFiles,
                     ),
-                    const StatusChip(
-                      label: 'History sync planned',
-                      tone: StatusTone.neutral,
+                    _ComposerIconButton(
+                      tooltip: 'Open camera',
+                      icon: Icons.photo_camera_outlined,
+                      onPressed: state.isSending ? null : _captureChatImage,
                     ),
                     FilledButton.icon(
                       onPressed: state.isSending ? null : submitQuestion,
@@ -539,12 +627,20 @@ class _MinimalComposer extends StatelessWidget {
     required this.hintText,
     required this.onSubmit,
     required this.isSending,
+    required this.attachments,
+    required this.onPickFiles,
+    required this.onCamera,
+    required this.onRemoveAttachment,
   });
 
   final TextEditingController controller;
   final String hintText;
   final VoidCallback onSubmit;
   final bool isSending;
+  final List<ChatAttachment> attachments;
+  final VoidCallback onPickFiles;
+  final VoidCallback onCamera;
+  final ValueChanged<ChatAttachment> onRemoveAttachment;
 
   @override
   Widget build(BuildContext context) {
@@ -573,32 +669,61 @@ class _MinimalComposer extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.08),
             ),
             child: IconButton(
-              onPressed: () => controller.clear(),
-              icon: const Icon(Icons.add_rounded, color: Colors.white),
+              tooltip: 'Attach image, PDF, or DOCX',
+              onPressed: isSending ? null : onPickFiles,
+              icon: const Icon(Icons.attach_file_rounded, color: Colors.white),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
+            child: IconButton(
+              tooltip: 'Open camera',
+              onPressed: isSending ? null : onCamera,
+              icon: const Icon(
+                Icons.photo_camera_outlined,
+                color: Colors.white,
+              ),
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: TextField(
-              controller: controller,
-              minLines: 1,
-              maxLines: 4,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) {
-                if (!isSending) onSubmit();
-              },
-              decoration: InputDecoration(
-                hintText: hintText,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                filled: false,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 0,
-                  vertical: 12,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _AttachmentTray(
+                  attachments: attachments,
+                  onRemove: onRemoveAttachment,
                 ),
-              ),
+                if (attachments.isNotEmpty) const SizedBox(height: 6),
+                TextField(
+                  controller: controller,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) {
+                    if (!isSending) onSubmit();
+                  },
+                  decoration: InputDecoration(
+                    hintText: hintText,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    filled: false,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 0,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(width: 12),
@@ -633,6 +758,61 @@ class _MinimalComposer extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AttachmentTray extends StatelessWidget {
+  const _AttachmentTray({required this.attachments, required this.onRemove});
+
+  final List<ChatAttachment> attachments;
+  final ValueChanged<ChatAttachment> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    if (attachments.isEmpty) return const SizedBox.shrink();
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final attachment in attachments)
+          InputChip(
+            avatar: Icon(_iconForKind(attachment.kind), size: 18),
+            label: Text(attachment.name),
+            onDeleted: () => onRemove(attachment),
+          ),
+      ],
+    );
+  }
+
+  IconData _iconForKind(String kind) {
+    return switch (kind.toLowerCase()) {
+      'pdf' => Icons.picture_as_pdf_rounded,
+      'docx' => Icons.description_outlined,
+      'camera image' => Icons.photo_camera_outlined,
+      'image' => Icons.image_outlined,
+      _ => Icons.insert_drive_file_outlined,
+    };
+  }
+}
+
+class _ComposerIconButton extends StatelessWidget {
+  const _ComposerIconButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: IconButton.filledTonal(onPressed: onPressed, icon: Icon(icon)),
     );
   }
 }

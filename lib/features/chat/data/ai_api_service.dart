@@ -30,6 +30,47 @@ class ChatStreamFrame {
   final bool done;
 }
 
+class IngestionUploadResult {
+  const IngestionUploadResult({
+    required this.accepted,
+    required this.targetCollection,
+    this.chunksInserted,
+    this.uploadedToGcs,
+  });
+
+  factory IngestionUploadResult.fromJson(Map<String, dynamic> json) {
+    return IngestionUploadResult(
+      accepted: _readInt(json['accepted'] ?? json['accepted_files']),
+      targetCollection:
+          (json['targetCollection'] ??
+                  json['target_collection'] ??
+                  'yenkasa_research')
+              .toString(),
+      chunksInserted: _readNullableInt(
+        json['chunksInserted'] ?? json['chunks_inserted'],
+      ),
+      uploadedToGcs:
+          json['uploadedToGcs'] as bool? ?? json['uploaded_to_gcs'] as bool?,
+    );
+  }
+
+  final int accepted;
+  final String targetCollection;
+  final int? chunksInserted;
+  final bool? uploadedToGcs;
+}
+
+int _readInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+int? _readNullableInt(Object? value) {
+  if (value == null) return null;
+  return _readInt(value);
+}
+
 class AiApiService {
   AiApiService(this._dio, {required Dio publicEngineDio})
     : _publicEngineDio = publicEngineDio;
@@ -63,6 +104,29 @@ class AiApiService {
         },
       );
       return SearchResponseModel.fromJson(response.data ?? const {});
+    } on DioException catch (error) {
+      throw _mapDioError(error);
+    }
+  }
+
+  Future<IngestionUploadResult> uploadKnowledgePdfs({
+    required List<MultipartFile> files,
+    String audience = 'engineering',
+  }) async {
+    try {
+      final formData = FormData.fromMap({'audience': audience, 'files': files});
+
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/ingest',
+        data: formData,
+        options: Options(
+          contentType: 'multipart/form-data',
+          sendTimeout: const Duration(minutes: 5),
+          receiveTimeout: const Duration(minutes: 5),
+        ),
+      );
+
+      return IngestionUploadResult.fromJson(response.data ?? const {});
     } on DioException catch (error) {
       throw _mapDioError(error);
     }

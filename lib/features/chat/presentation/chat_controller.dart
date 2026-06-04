@@ -17,10 +17,25 @@ final chatControllerProvider = StateNotifierProvider<ChatController, ChatState>(
   },
 );
 
+class ChatAttachment {
+  const ChatAttachment({
+    required this.name,
+    required this.path,
+    required this.kind,
+  });
+
+  final String name;
+  final String path;
+  final String kind;
+
+  String get promptLine => '- $name ($kind)';
+}
+
 class ChatState {
   const ChatState({
     required this.audience,
     required this.messages,
+    this.pendingAttachments = const [],
     this.sources = const [],
     this.answerCards = const [],
     this.suggestedFollowUps = const [],
@@ -33,6 +48,7 @@ class ChatState {
 
   final String audience;
   final List<ChatMessage> messages;
+  final List<ChatAttachment> pendingAttachments;
   final List<SourceChunkModel> sources;
   final List<AnswerCardModel> answerCards;
   final List<String> suggestedFollowUps;
@@ -45,6 +61,7 @@ class ChatState {
   ChatState copyWith({
     String? audience,
     List<ChatMessage>? messages,
+    List<ChatAttachment>? pendingAttachments,
     List<SourceChunkModel>? sources,
     List<AnswerCardModel>? answerCards,
     List<String>? suggestedFollowUps,
@@ -58,6 +75,7 @@ class ChatState {
     return ChatState(
       audience: audience ?? this.audience,
       messages: messages ?? this.messages,
+      pendingAttachments: pendingAttachments ?? this.pendingAttachments,
       sources: sources ?? this.sources,
       answerCards: answerCards ?? this.answerCards,
       suggestedFollowUps: suggestedFollowUps ?? this.suggestedFollowUps,
@@ -105,17 +123,54 @@ class ChatController extends StateNotifier<ChatState> {
     );
   }
 
+  void addAttachments(List<ChatAttachment> attachments) {
+    if (attachments.isEmpty || state.isSending) return;
+    final existingKeys = state.pendingAttachments
+        .map((item) => '${item.path}:${item.name}')
+        .toSet();
+    final next = [...state.pendingAttachments];
+    for (final attachment in attachments) {
+      final key = '${attachment.path}:${attachment.name}';
+      if (existingKeys.add(key)) {
+        next.add(attachment);
+      }
+    }
+    state = state.copyWith(pendingAttachments: next);
+  }
+
+  void removeAttachment(ChatAttachment attachment) {
+    state = state.copyWith(
+      pendingAttachments: state.pendingAttachments
+          .where((item) => item.path != attachment.path)
+          .toList(),
+    );
+  }
+
+  void clearAttachments() {
+    if (state.pendingAttachments.isEmpty) return;
+    state = state.copyWith(pendingAttachments: const []);
+  }
+
   Future<void> sendMessage(String question, {bool includeDebug = false}) async {
     final trimmed = question.trim();
-    if (trimmed.isEmpty || state.isSending) return;
+    final attachments = state.pendingAttachments;
+    if ((trimmed.isEmpty && attachments.isEmpty) || state.isSending) return;
+
+    final attachmentContext = attachments.isEmpty
+        ? ''
+        : '\n\nAttached files for analysis:\n${attachments.map((item) => item.promptLine).join('\n')}\n\nUse the attachment names and file types as context. If file binary extraction is required, explain what needs to be ingested or uploaded next.';
+    final questionWithAttachments = '$trimmed$attachmentContext'.trim();
+    final displayText = attachments.isEmpty
+        ? trimmed
+        : '$trimmed\n\n${attachments.map((item) => item.promptLine).join('\n')}';
 
     final userMessage = ChatMessage(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       role: ChatRole.user,
-      content: trimmed,
+      content: displayText,
       createdAt: DateTime.now(),
       audience: state.audience,
-      question: trimmed,
+      question: questionWithAttachments,
     );
     final placeholder = ChatMessage(
       id: '${userMessage.id}-assistant',
@@ -124,7 +179,7 @@ class ChatController extends StateNotifier<ChatState> {
       isStreaming: true,
       createdAt: DateTime.now(),
       audience: state.audience,
-      question: trimmed,
+      question: questionWithAttachments,
     );
 
     final baseMessages = [...state.messages, userMessage, placeholder];
@@ -132,7 +187,8 @@ class ChatController extends StateNotifier<ChatState> {
       messages: baseMessages,
       isSending: true,
       clearError: true,
-      lastQuestion: trimmed,
+      lastQuestion: questionWithAttachments,
+      pendingAttachments: const [],
       sources: const [],
       answerCards: const [],
       suggestedFollowUps: const [],
@@ -141,7 +197,7 @@ class ChatController extends StateNotifier<ChatState> {
 
     try {
       await for (final frame in _apiService.streamChat(
-        question: trimmed,
+        question: questionWithAttachments,
         history: state.messages
             .where((message) => !message.isStreaming)
             .toList(),
@@ -166,7 +222,7 @@ class ChatController extends StateNotifier<ChatState> {
             model: frame.response?.model ?? updatedMessages[lastIndex].model,
             audience:
                 frame.response?.audience ?? updatedMessages[lastIndex].audience,
-            question: trimmed,
+            question: questionWithAttachments,
           );
         }
         state = state.copyWith(

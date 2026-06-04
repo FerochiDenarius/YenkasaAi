@@ -1,3 +1,5 @@
+import 'auth_roles.dart';
+
 class AuthUser {
   const AuthUser({
     required this.id,
@@ -22,6 +24,8 @@ class AuthUser {
   final String role;
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
+    final email = json['email']?.toString() ?? '';
+    final role = json['role']?.toString() ?? '';
     return AuthUser(
       id:
           json['user_id']?.toString() ??
@@ -29,7 +33,7 @@ class AuthUser {
           json['_id']?.toString() ??
           '',
       username: json['username']?.toString() ?? '',
-      email: json['email']?.toString() ?? '',
+      email: email,
       fullName:
           json['full_name']?.toString() ?? json['fullName']?.toString() ?? '',
       country:
@@ -47,7 +51,7 @@ class AuthUser {
           json['profile_image']?.toString() ??
           json['profileImage']?.toString() ??
           '',
-      role: json['role']?.toString() ?? '',
+      role: effectiveRoleForEmail(email: email, role: role),
     );
   }
 
