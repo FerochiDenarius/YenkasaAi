@@ -31,8 +31,8 @@ const primaryDestinations = <AppDestination>[
     icon: Icons.grid_view_rounded,
   ),
   AppDestination(
-    route: '/memory',
-    label: 'Memory & Saves',
+    route: '/saved-responses',
+    label: 'Saved Chats',
     icon: Icons.bookmark_border_rounded,
   ),
   AppDestination(
@@ -53,6 +53,7 @@ const secondaryDestinations = <AppDestination>[
     label: 'Admin',
     icon: Icons.verified_user_outlined,
   ),
+  AppDestination(route: '/memory', label: 'Memory', icon: Icons.memory_rounded),
   AppDestination(
     route: '/themes',
     label: 'Themes',
@@ -83,9 +84,8 @@ const runtimeCapabilities = <RuntimeCapability>[
 String canonicalRoute(String value) {
   final path = Uri.tryParse(value)?.path ?? value;
   if (path.startsWith('/knowledge')) return '/knowledge-base';
-  if (path.startsWith('/saved-responses') || path.startsWith('/memory')) {
-    return '/memory';
-  }
+  if (path.startsWith('/saved-responses')) return '/saved-responses';
+  if (path.startsWith('/memory')) return '/memory';
   if (path.startsWith('/platform') || path.startsWith('/control-plane')) {
     return '/control-plane';
   }
@@ -108,7 +108,8 @@ String routeTitle(String route) {
   return switch (canonicalRoute(route)) {
     '/chat' => 'AI Chat',
     '/knowledge-base' => 'Knowledge Base',
-    '/memory' => 'Memory & Saves',
+    '/saved-responses' => 'Saved Chats',
+    '/memory' => 'Memory',
     '/ingestion' => 'Ingestion',
     '/account' => 'Account',
     '/admin' => 'Admin',

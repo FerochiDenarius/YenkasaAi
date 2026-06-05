@@ -38,3 +38,12 @@ bool canAccessModerationRole(String? role) {
     'senior_developer',
   }.contains(normalizeRole(role));
 }
+
+bool canAccessMemoryRole(String? role) {
+  return {
+    'admin',
+    'super_admin',
+    'developer',
+    'senior_developer',
+  }.contains(normalizeRole(role));
+}

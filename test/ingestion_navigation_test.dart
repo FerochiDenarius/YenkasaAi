@@ -8,6 +8,10 @@ void main() {
   test('ingestion route is registered in navigation metadata', () {
     expect(canonicalRoute('/ingestion'), '/ingestion');
     expect(routeTitle('/ingestion'), 'Ingestion');
+    expect(canonicalRoute('/saved-responses'), '/saved-responses');
+    expect(routeTitle('/saved-responses'), 'Saved Chats');
+    expect(canonicalRoute('/memory'), '/memory');
+    expect(routeTitle('/memory'), 'Memory');
     expect(
       primaryDestinations.any(
         (destination) => destination.route == '/ingestion',

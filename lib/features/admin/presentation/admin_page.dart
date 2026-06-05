@@ -15,6 +15,7 @@ class AdminPage extends ConsumerWidget {
     final role = ref.watch(authControllerProvider).valueOrNull?.user.role ?? '';
     final canModerate = canAccessModerationRole(role);
     final canAnalyze = canAccessAnalyticsRole(role);
+    final canInspectMemory = canAccessMemoryRole(role);
 
     return ListView(
       padding: const EdgeInsets.all(20),
@@ -53,6 +54,14 @@ class AdminPage extends ConsumerWidget {
               enabled: true,
               cta: 'Open runtime',
               onTap: () => context.go('/runtime'),
+            ),
+            _AdminModuleCard(
+              title: 'Memory Console',
+              subtitle:
+                  'Review refined YME memory for user behavior and AI recall.',
+              enabled: canInspectMemory,
+              cta: 'Open memory',
+              onTap: () => context.go('/memory'),
             ),
             _AdminModuleCard(
               title: 'Ingestion Console',

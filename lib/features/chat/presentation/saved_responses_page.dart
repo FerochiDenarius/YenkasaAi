@@ -9,18 +9,68 @@ import '../../chat/actions/ai_response_models.dart';
 import '../../chat/actions/ai_response_repository.dart';
 import '../../chat/actions/ai_save_manager.dart';
 import '../../chat/actions/ai_speech_manager.dart';
+import '../../auth/domain/auth_roles.dart';
+import '../../auth/presentation/controllers/auth_controller.dart';
 import '../models/yme_memory_models.dart';
 import 'yme_memory_controller.dart';
 import 'yme_memory_state.dart';
 
-class SavedResponsesPage extends ConsumerStatefulWidget {
+class SavedResponsesPage extends ConsumerWidget {
   const SavedResponsesPage({super.key});
 
   @override
-  ConsumerState<SavedResponsesPage> createState() => _SavedResponsesPageState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final savedResponses = ref.watch(aiSavedResponsesControllerProvider);
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SafeArea(
+        child: RefreshIndicator.adaptive(
+          onRefresh: ref.read(aiSavedResponsesControllerProvider.notifier).load,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(20),
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1180),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Saved Chats',
+                        style: Theme.of(context).textTheme.displaySmall
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'These are chats and answers you explicitly saved from the chat action menu. They are separate from YenkasaAI memory.',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyLarge?.copyWith(height: 1.6),
+                      ),
+                      const SizedBox(height: 20),
+                      _SavedResponsesSection(savedResponses: savedResponses),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-class _SavedResponsesPageState extends ConsumerState<SavedResponsesPage> {
+class MemoryPage extends ConsumerStatefulWidget {
+  const MemoryPage({super.key});
+
+  @override
+  ConsumerState<MemoryPage> createState() => _MemoryPageState();
+}
+
+class _MemoryPageState extends ConsumerState<MemoryPage> {
   late final TextEditingController _searchController;
 
   @override
@@ -37,9 +87,26 @@ class _SavedResponsesPageState extends ConsumerState<SavedResponsesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final role = ref.watch(authControllerProvider).valueOrNull?.user.role ?? '';
+    if (!canAccessMemoryRole(role)) {
+      return const Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: GlassCard(
+                strong: true,
+                child: Text(
+                  'Memory Console is available to developers and admins only.',
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     final memoryState = ref.watch(ymeMemoryControllerProvider);
-    final savedResponses = ref.watch(aiSavedResponsesControllerProvider);
-    final savedCount = savedResponses.valueOrNull?.length ?? 0;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -57,16 +124,13 @@ class _SavedResponsesPageState extends ConsumerState<SavedResponsesPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'AI Memory & Saved Responses',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.displaySmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                        'Memory Console',
+                        style: Theme.of(context).textTheme.displaySmall
+                            ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Live YME memories are synced from the backend. Local saved responses stay on this device for quick reference and export.',
+                        'YME memory is refined context produced by YenkasaAI. It is separate from saved chats and is restricted to developers and admins until the user health dashboard is ready.',
                         style: Theme.of(
                           context,
                         ).textTheme.bodyLarge?.copyWith(height: 1.6),
@@ -87,7 +151,6 @@ class _SavedResponsesPageState extends ConsumerState<SavedResponsesPage> {
                         ),
                         data: (state) => _LiveMemoryPanel(
                           state: state,
-                          savedCount: savedCount,
                           searchController: _searchController,
                           onSearch: _runSearch,
                           onClearSearch: _clearSearch,
@@ -97,8 +160,6 @@ class _SavedResponsesPageState extends ConsumerState<SavedResponsesPage> {
                           onDeleteMemory: _deleteMemory,
                         ),
                       ),
-                      const SizedBox(height: 28),
-                      _SavedResponsesSection(savedResponses: savedResponses),
                     ],
                   ),
                 ),
@@ -158,9 +219,9 @@ class _SavedResponsesPageState extends ConsumerState<SavedResponsesPage> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Delete failed: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Delete failed: $error')));
     }
   }
 }
@@ -168,7 +229,6 @@ class _SavedResponsesPageState extends ConsumerState<SavedResponsesPage> {
 class _LiveMemoryPanel extends StatelessWidget {
   const _LiveMemoryPanel({
     required this.state,
-    required this.savedCount,
     required this.searchController,
     required this.onSearch,
     required this.onClearSearch,
@@ -177,7 +237,6 @@ class _LiveMemoryPanel extends StatelessWidget {
   });
 
   final YmeMemoryState state;
-  final int savedCount;
   final TextEditingController searchController;
   final Future<void> Function() onSearch;
   final VoidCallback onClearSearch;
@@ -214,11 +273,6 @@ class _LiveMemoryPanel extends StatelessWidget {
                   ? 'Query: ${state.searchQuery}'
                   : 'Search YME context',
             ),
-            _MetricCard(
-              label: 'Local saved answers',
-              value: savedCount.toString(),
-              caption: 'Pinned on this device',
-            ),
           ],
         ),
         const SizedBox(height: 20),
@@ -246,7 +300,8 @@ class _LiveMemoryPanel extends StatelessWidget {
                 textInputAction: TextInputAction.search,
                 onSubmitted: (_) => onSearch(),
                 decoration: InputDecoration(
-                  hintText: 'Search memories, reports, sessions, or user context',
+                  hintText:
+                      'Search memories, reports, sessions, or user context',
                   prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -307,10 +362,7 @@ class _LiveMemoryPanel extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 20),
-        _MemoryLibraryPanel(
-          state: state,
-          onDeleteMemory: onDeleteMemory,
-        ),
+        _MemoryLibraryPanel(state: state, onDeleteMemory: onDeleteMemory),
       ],
     );
   }
@@ -387,7 +439,9 @@ class _SearchResultsPanel extends StatelessWidget {
                         memory: hit.memory,
                         subtitle:
                             'Score ${hit.score.toStringAsFixed(2)}  •  semantic ${hit.semanticScore.toStringAsFixed(2)}',
-                        deleting: state.deletingIds.contains(hit.memory.memoryId),
+                        deleting: state.deletingIds.contains(
+                          hit.memory.memoryId,
+                        ),
                         onDelete: () => onDeleteMemory(hit.memory),
                       ),
                     ),
@@ -471,14 +525,14 @@ class _SavedResponsesSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Local saved responses',
+          'Saved chat library',
           style: Theme.of(
             context,
           ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
         Text(
-          'Pinned, favorite, and archived answers remain available locally for export workflows and offline reference.',
+          'Pinned, favorite, and archived chats remain available locally for export workflows and offline reference.',
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.6),
         ),
         const SizedBox(height: 16),
@@ -498,7 +552,7 @@ class _SavedResponsesSection extends StatelessWidget {
                 child: Padding(
                   padding: EdgeInsets.all(16),
                   child: Text(
-                    'No local saved responses yet. Use the action sheet on an answer to save or favorite it.',
+                    'No saved chats yet. Use the action sheet on an answer to save it.',
                   ),
                 ),
               );
@@ -512,9 +566,7 @@ class _SavedResponsesSection extends StatelessWidget {
                 if (pinned.isNotEmpty) ...[
                   Text(
                     'Pinned',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleMedium?.copyWith(
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -524,9 +576,9 @@ class _SavedResponsesSection extends StatelessWidget {
                 ],
                 Text(
                   'Library',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _SavedResponseGrid(items: others),
@@ -551,142 +603,212 @@ class _SavedResponseGrid extends ConsumerWidget {
       runSpacing: 16,
       children: items
           .map(
-            (item) => SizedBox(
-              width: 420,
-              child: GlassCard(
-                strong: true,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            item.snapshot.model ?? 'AI Response',
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => ref
-                              .read(aiSaveManagerProvider)
-                              .togglePinned(item.id),
-                          icon: Icon(
-                            item.isPinned
-                                ? Icons.push_pin_rounded
-                                : Icons.push_pin_outlined,
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => ref
-                              .read(aiSaveManagerProvider)
-                              .toggleFavorite(item.id),
-                          icon: Icon(
-                            item.isFavorite
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_border_rounded,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      item.snapshot.responseText,
-                      maxLines: 8,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyMedium?.copyWith(height: 1.6),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        Chip(label: Text(item.snapshot.audience)),
-                        Chip(label: Text(item.snapshot.provider ?? 'provider')),
-                        Chip(
-                          label: Text(
-                            AiResponseFormatter.plainText(
-                                      item.snapshot.responseText,
-                                    ).split('\n').length >
-                                    12
-                                ? 'long response'
-                                : 'compact response',
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Text(
-                          _formatDateTime(item.createdAt),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: () => showAiMessageBottomSheet(
-                            context,
-                            snapshot: item.snapshot,
-                            hasFailedResponse: false,
-                            onCopy: () => copyResponseToClipboard(
-                              context,
-                              item.snapshot.responseText,
-                            ),
-                            onShare: () => const AiShareManager().shareResponse(
-                              context,
-                              item.snapshot,
-                            ),
-                            onSave: () => ref
-                                .read(aiSaveManagerProvider)
-                                .save(item.snapshot),
-                            onExportTxt: () =>
-                                const AiExportManager().exportResponse(
-                                  context,
-                                  item.snapshot,
-                                  format: AiResponseExportFormat.txt,
-                                ),
-                            onExportMarkdown: () =>
-                                const AiExportManager().exportResponse(
-                                  context,
-                                  item.snapshot,
-                                  format: AiResponseExportFormat.markdown,
-                                ),
-                            onExportPdf: () =>
-                                const AiExportManager().exportResponse(
-                                  context,
-                                  item.snapshot,
-                                  format: AiResponseExportFormat.pdf,
-                                ),
-                            onTogglePin: () => ref
-                                .read(aiSaveManagerProvider)
-                                .togglePinned(item.id),
-                            onToggleFavorite: () => ref
-                                .read(aiSaveManagerProvider)
-                                .toggleFavorite(item.id),
-                            onSpeak: () => ref
-                                .read(aiSpeechControllerProvider.notifier)
-                                .speak(item.snapshot.responseText),
-                            onPauseSpeech: () => ref
-                                .read(aiSpeechControllerProvider.notifier)
-                                .pause(),
-                            onStopSpeech: () => ref
-                                .read(aiSpeechControllerProvider.notifier)
-                                .stop(),
-                            onRegenerate: () {},
-                            onContinueGeneration: () {},
-                          ),
-                          child: const Text('Actions'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            (item) => SizedBox(width: 520, child: _SavedChatTile(item: item)),
           )
           .toList(),
+    );
+  }
+}
+
+class _SavedChatTile extends ConsumerWidget {
+  const _SavedChatTile({required this.item});
+
+  final AiSavedResponse item;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final plainText = AiResponseFormatter.plainText(item.snapshot.responseText);
+    final title = item.snapshot.question?.trim().isNotEmpty == true
+        ? item.snapshot.question!.trim()
+        : item.snapshot.model ?? 'Saved Chat';
+    final lineCount = plainText.split('\n').length;
+
+    return GlassCard(
+      strong: true,
+      padding: EdgeInsets.zero,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.fromLTRB(18, 12, 10, 12),
+          childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+          leading: Icon(
+            item.isPinned
+                ? Icons.push_pin_rounded
+                : Icons.chat_bubble_outline_rounded,
+          ),
+          title: Text(
+            title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  plainText,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(height: 1.5),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Chip(label: Text(item.snapshot.audience)),
+                    Chip(label: Text(item.snapshot.provider ?? 'provider')),
+                    Chip(
+                      label: Text(lineCount > 12 ? 'long chat' : 'short chat'),
+                    ),
+                    if (item.isFavorite) const Chip(label: Text('favorite')),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          trailing: Wrap(
+            spacing: 2,
+            children: [
+              IconButton(
+                tooltip: item.isPinned ? 'Unpin chat' : 'Pin chat',
+                onPressed: () =>
+                    ref.read(aiSaveManagerProvider).togglePinned(item.id),
+                icon: Icon(
+                  item.isPinned
+                      ? Icons.push_pin_rounded
+                      : Icons.push_pin_outlined,
+                ),
+              ),
+              IconButton(
+                tooltip: item.isFavorite ? 'Unfavorite chat' : 'Favorite chat',
+                onPressed: () =>
+                    ref.read(aiSaveManagerProvider).toggleFavorite(item.id),
+                icon: Icon(
+                  item.isFavorite
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                ),
+              ),
+            ],
+          ),
+          children: [
+            if (item.snapshot.question?.trim().isNotEmpty == true) ...[
+              _SavedChatBlock(
+                label: 'Question',
+                text: item.snapshot.question!.trim(),
+              ),
+              const SizedBox(height: 12),
+            ],
+            _SavedChatBlock(label: 'Answer', text: item.snapshot.responseText),
+            if (item.note.trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _SavedChatBlock(label: 'Note', text: item.note.trim()),
+            ],
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Text(
+                  _formatDateTime(item.createdAt),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => showAiMessageBottomSheet(
+                    context,
+                    snapshot: item.snapshot,
+                    hasFailedResponse: false,
+                    onCopy: () => copyResponseToClipboard(
+                      context,
+                      item.snapshot.responseText,
+                    ),
+                    onShare: () => const AiShareManager().shareResponse(
+                      context,
+                      item.snapshot,
+                    ),
+                    onSave: () =>
+                        ref.read(aiSaveManagerProvider).save(item.snapshot),
+                    onExportTxt: () => const AiExportManager().exportResponse(
+                      context,
+                      item.snapshot,
+                      format: AiResponseExportFormat.txt,
+                    ),
+                    onExportMarkdown: () =>
+                        const AiExportManager().exportResponse(
+                          context,
+                          item.snapshot,
+                          format: AiResponseExportFormat.markdown,
+                        ),
+                    onExportPdf: () => const AiExportManager().exportResponse(
+                      context,
+                      item.snapshot,
+                      format: AiResponseExportFormat.pdf,
+                    ),
+                    onTogglePin: () =>
+                        ref.read(aiSaveManagerProvider).togglePinned(item.id),
+                    onToggleFavorite: () =>
+                        ref.read(aiSaveManagerProvider).toggleFavorite(item.id),
+                    onSpeak: () => ref
+                        .read(aiSpeechControllerProvider.notifier)
+                        .speak(item.snapshot.responseText),
+                    onPauseSpeech: () =>
+                        ref.read(aiSpeechControllerProvider.notifier).pause(),
+                    onStopSpeech: () =>
+                        ref.read(aiSpeechControllerProvider.notifier).stop(),
+                    onRegenerate: () {},
+                    onContinueGeneration: () {},
+                  ),
+                  child: const Text('Actions'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SavedChatBlock extends StatelessWidget {
+  const _SavedChatBlock({required this.label, required this.text});
+
+  final String label;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: Colors.white.withValues(alpha: 0.04),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            text,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(height: 1.6),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -719,9 +841,7 @@ class _MemoryCard extends StatelessWidget {
                   children: [
                     Text(
                       memory.title,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.titleMedium?.copyWith(
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -811,10 +931,7 @@ class _MetricCard extends StatelessWidget {
 }
 
 class _FailureState extends StatelessWidget {
-  const _FailureState({
-    required this.message,
-    required this.onRetry,
-  });
+  const _FailureState({required this.message, required this.onRetry});
 
   final String message;
   final Future<void> Function() onRetry;
@@ -827,10 +944,7 @@ class _FailureState extends StatelessWidget {
         children: [
           Text(message),
           const SizedBox(height: 12),
-          FilledButton(
-            onPressed: onRetry,
-            child: const Text('Retry'),
-          ),
+          FilledButton(onPressed: onRetry, child: const Text('Retry')),
         ],
       ),
     );

@@ -156,6 +156,7 @@ class AiApiService {
   Future<IngestionUploadResult> uploadKnowledgePdfs({
     required List<MultipartFile> files,
     String audience = 'engineering',
+    void Function(int sent, int total)? onSendProgress,
   }) async {
     try {
       final formData = FormData.fromMap({'audience': audience, 'files': files});
@@ -163,6 +164,7 @@ class AiApiService {
       final response = await _dio.post<Map<String, dynamic>>(
         '/ingest',
         data: formData,
+        onSendProgress: onSendProgress,
         options: Options(
           contentType: 'multipart/form-data',
           sendTimeout: const Duration(minutes: 5),

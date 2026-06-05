@@ -22,7 +22,9 @@ class _IngestionPageState extends ConsumerState<IngestionPage> {
   bool _isUploading = false;
   IngestionUploadResult? _lastResult;
   String? _errorMessage;
-  List<String> _selectedNames = const [];
+  List<_SelectedIngestionFile> _selectedFiles = const [];
+  int _uploadedBytes = 0;
+  int _uploadTotalBytes = 0;
 
   @override
   void dispose() {
@@ -37,7 +39,9 @@ class _IngestionPageState extends ConsumerState<IngestionPage> {
       _isUploading = true;
       _errorMessage = null;
       _lastResult = null;
-      _selectedNames = const [];
+      _selectedFiles = const [];
+      _uploadedBytes = 0;
+      _uploadTotalBytes = 0;
     });
 
     try {
@@ -63,6 +67,20 @@ class _IngestionPageState extends ConsumerState<IngestionPage> {
         throw const FormatException('Selected PDF files could not be read.');
       }
 
+      final selectedFiles = usableFiles
+          .map(
+            (file) =>
+                _SelectedIngestionFile(name: file.name, sizeBytes: file.size),
+          )
+          .toList(growable: false);
+      setState(() {
+        _selectedFiles = selectedFiles;
+        _uploadTotalBytes = selectedFiles.fold<int>(
+          0,
+          (total, file) => total + file.sizeBytes,
+        );
+      });
+
       final multipartFiles = <MultipartFile>[];
       for (final file in usableFiles) {
         multipartFiles.add(
@@ -74,18 +92,28 @@ class _IngestionPageState extends ConsumerState<IngestionPage> {
         );
       }
 
-      setState(() {
-        _selectedNames = usableFiles.map((file) => file.name).toList();
-      });
-
       final uploadResult = await ref
           .read(aiApiServiceProvider)
-          .uploadKnowledgePdfs(files: multipartFiles);
+          .uploadKnowledgePdfs(
+            files: multipartFiles,
+            onSendProgress: (sent, total) {
+              if (!mounted) return;
+              setState(() {
+                _uploadedBytes = sent;
+                if (total > 0) {
+                  _uploadTotalBytes = total;
+                }
+              });
+            },
+          );
 
       if (!mounted) return;
       setState(() {
         _lastResult = uploadResult;
         _isUploading = false;
+        if (_uploadTotalBytes > 0) {
+          _uploadedBytes = _uploadTotalBytes;
+        }
       });
     } catch (error) {
       if (!mounted) return;
@@ -201,27 +229,25 @@ class _IngestionPageState extends ConsumerState<IngestionPage> {
                       _isUploading ? 'Uploading PDFs...' : 'Select PDF files',
                     ),
                   ),
-                  if (_selectedNames.isNotEmpty) ...[
+                  if (_selectedFiles.isNotEmpty) ...[
                     const SizedBox(height: 16),
-                    Text(
-                      'Selected files',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
+                    _UploadProgressPill(
+                      isUploading: _isUploading,
+                      uploadedBytes: _uploadedBytes,
+                      totalBytes: _uploadTotalBytes,
+                      selectedFileCount: _selectedFiles.length,
+                      selectedBytes: _selectedFiles.fold<int>(
+                        0,
+                        (total, file) => total + file.sizeBytes,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        for (final name in _selectedNames)
-                          Chip(
-                            avatar: const Icon(
-                              Icons.picture_as_pdf_rounded,
-                              size: 18,
-                            ),
-                            label: Text(name),
-                          ),
+                        for (final file in _selectedFiles)
+                          _FileSizePill(file: file),
                       ],
                     ),
                   ],
@@ -278,4 +304,168 @@ class _IngestionPageState extends ConsumerState<IngestionPage> {
       ),
     );
   }
+}
+
+class _SelectedIngestionFile {
+  const _SelectedIngestionFile({required this.name, required this.sizeBytes});
+
+  final String name;
+  final int sizeBytes;
+}
+
+class _UploadProgressPill extends StatelessWidget {
+  const _UploadProgressPill({
+    required this.isUploading,
+    required this.uploadedBytes,
+    required this.totalBytes,
+    required this.selectedFileCount,
+    required this.selectedBytes,
+  });
+
+  final bool isUploading;
+  final int uploadedBytes;
+  final int totalBytes;
+  final int selectedFileCount;
+  final int selectedBytes;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveTotal = totalBytes > 0 ? totalBytes : selectedBytes;
+    final progress = effectiveTotal <= 0
+        ? 0.0
+        : (uploadedBytes / effectiveTotal).clamp(0.0, 1.0);
+    final percent = (progress * 100).round();
+    final statusLabel = isUploading
+        ? 'Uploading $percent%'
+        : percent >= 100
+        ? 'Upload complete'
+        : 'Ready to upload';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.cyanAccent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: Colors.cyanAccent.withValues(alpha: 0.28),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isUploading
+                          ? Icons.cloud_upload_rounded
+                          : Icons.check_circle_outline_rounded,
+                      size: 18,
+                      color: Colors.cyanAccent,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      statusLabel,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$selectedFileCount file${selectedFileCount == 1 ? '' : 's'} • ${_formatBytes(selectedBytes)}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.72),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress == 0 && isUploading ? null : progress,
+              minHeight: 8,
+              backgroundColor: Colors.white.withValues(alpha: 0.08),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${_formatBytes(uploadedBytes)} uploaded of ${_formatBytes(effectiveTotal)}',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colors.white.withValues(alpha: 0.64),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FileSizePill extends StatelessWidget {
+  const _FileSizePill({required this.file});
+
+  final _SelectedIngestionFile file;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 360),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.045),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.picture_as_pdf_rounded, size: 18),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              file.name,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            _formatBytes(file.sizeBytes),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Colors.white.withValues(alpha: 0.62),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _formatBytes(int bytes) {
+  if (bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  var value = bytes.toDouble();
+  var unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  final decimals = value >= 10 || unitIndex == 0 ? 0 : 1;
+  return '${value.toStringAsFixed(decimals)} ${units[unitIndex]}';
 }

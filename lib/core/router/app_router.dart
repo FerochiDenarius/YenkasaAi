@@ -131,6 +131,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         );
         return '/admin';
       }
+      if (path.startsWith('/memory') && !canAccessMemoryRole(role)) {
+        _logRouteDecision(
+          path: path,
+          target: '/saved-responses',
+          reason: 'memory_role_blocked',
+          session: session,
+        );
+        return '/saved-responses';
+      }
       if (isBootRoute || isAuthRoute) {
         final target = ref.read(navigationUiControllerProvider).currentRoute;
         _logRouteDecision(
@@ -201,11 +210,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/memory',
             pageBuilder: (context, state) =>
-                const NoTransitionPage(child: SavedResponsesPage()),
+                const NoTransitionPage(child: MemoryPage()),
           ),
           GoRoute(
             path: '/saved-responses',
-            redirect: (context, state) => '/memory',
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: SavedResponsesPage()),
           ),
           GoRoute(
             path: '/ingestion',

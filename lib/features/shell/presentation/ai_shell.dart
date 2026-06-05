@@ -15,6 +15,7 @@ import '../../../navigation/app_navigation.dart';
 import '../../../navigation/navigation_state.dart';
 import '../../../theme/ai_theme_controller.dart';
 import '../../../theme/ai_theme_preset.dart';
+import '../../auth/domain/auth_roles.dart';
 import '../../auth/presentation/controllers/auth_controller.dart';
 import '../../health/presentation/health_indicator.dart';
 
@@ -41,6 +42,13 @@ class _AiShellState extends ConsumerState<AiShell> {
     final navController = ref.read(navigationUiControllerProvider.notifier);
     final session = ref.watch(authControllerProvider).valueOrNull;
     final currentRoute = canonicalRoute(widget.currentLocation);
+    final role = session?.user.role ?? '';
+    final secondaryDestinationsForRole = secondaryDestinations
+        .where(
+          (destination) =>
+              destination.route != '/memory' || canAccessMemoryRole(role),
+        )
+        .toList(growable: false);
     if (navState.currentRoute != currentRoute) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         navController.setCurrentRoute(currentRoute);
@@ -92,6 +100,7 @@ class _AiShellState extends ConsumerState<AiShell> {
                         handleLogout,
                       );
                     },
+                    secondaryDestinationsForRole: secondaryDestinationsForRole,
                   ),
                 ),
               ),
@@ -132,6 +141,8 @@ class _AiShellState extends ConsumerState<AiShell> {
                           navController,
                           handleLogout,
                         ),
+                        secondaryDestinationsForRole:
+                            secondaryDestinationsForRole,
                       ),
                     ),
                   ),
@@ -336,6 +347,7 @@ class _SidebarPanel extends StatelessWidget {
     required this.onToggleRuntime,
     required this.runtimeExpanded,
     required this.onNavigate,
+    required this.secondaryDestinationsForRole,
   });
 
   final String currentRoute;
@@ -347,6 +359,7 @@ class _SidebarPanel extends StatelessWidget {
   final VoidCallback onToggleRuntime;
   final bool runtimeExpanded;
   final ValueChanged<String> onNavigate;
+  final List<AppDestination> secondaryDestinationsForRole;
 
   @override
   Widget build(BuildContext context) {
@@ -417,7 +430,7 @@ class _SidebarPanel extends StatelessWidget {
                   ],
                   _SidebarDivider(expanded: expanded, color: surface.outline),
                   const SizedBox(height: 8),
-                  for (final destination in secondaryDestinations) ...[
+                  for (final destination in secondaryDestinationsForRole) ...[
                     NavigationMenuItem(
                       label: destination.label,
                       icon: destination.icon,

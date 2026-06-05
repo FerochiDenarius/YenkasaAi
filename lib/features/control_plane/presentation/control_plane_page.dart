@@ -38,8 +38,13 @@ class ControlPlanePage extends StatelessWidget {
               route: '/knowledge-base',
             ),
             _ControlPlaneModule(
-              title: 'Memory & Saves',
-              subtitle: 'Inspect YME memories and local response saves.',
+              title: 'Saved Chats',
+              subtitle: 'Review the chats and answers you explicitly saved.',
+              route: '/saved-responses',
+            ),
+            _ControlPlaneModule(
+              title: 'Memory Console',
+              subtitle: 'Inspect refined YME memories for admin review.',
               route: '/memory',
             ),
             _ControlPlaneModule(
