@@ -8,8 +8,6 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/glass_card.dart';
-import '../../../core/widgets/metric_card.dart';
-import '../../../core/widgets/section_header.dart';
 import '../../../services/mock_dashboard_data.dart';
 import '../actions/ai_message_actions_layer.dart';
 import '../models/chat_message.dart';
@@ -36,7 +34,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: promptSuggestions.first);
+    _controller = TextEditingController();
     _scrollController.addListener(_handleScroll);
     _messageStreamSubscription = ref.listenManual<(int, int, bool)>(
       chatControllerProvider.select((state) {
@@ -379,80 +377,56 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SectionHeader(
-              eyebrow: 'AI Chat Dashboard',
-              title: isPublic
-                  ? 'Platform answers grounded on Yenkasa knowledge'
-                  : 'Engineering answers grounded on Yenkasa architecture',
-              description: isPublic
-                  ? 'This mode explains product concepts naturally, keeps moderation-sensitive topics safe, and stays accessible for users.'
-                  : 'This mode stays focused on distributed systems, livestream scale, moderation workflows, mobile optimization, and AI infrastructure decisions.',
-            ),
-            SizedBox(height: compactPage ? 14 : 20),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                ChoiceChip(
-                  label: const Text('Public Assistant'),
-                  selected: isPublic,
-                  onSelected: (_) => controller.setAudience('public'),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'YenkasaAI',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Grounded answers from Yenkasa knowledge',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.white.withValues(alpha: 0.62),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                ChoiceChip(
-                  label: const Text('Engineering Copilot'),
-                  selected: !isPublic,
-                  onSelected: (_) => controller.setAudience('engineering'),
+                const SizedBox(width: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Public Assistant'),
+                      selected: isPublic,
+                      onSelected: (_) => controller.setAudience('public'),
+                    ),
+                    ChoiceChip(
+                      label: const Text('Engineering Copilot'),
+                      selected: !isPublic,
+                      onSelected: (_) => controller.setAudience('engineering'),
+                    ),
+                  ],
                 ),
               ],
             ),
-            SizedBox(height: compactPage ? 12 : 20),
-            if (!compactPage)
-              Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: [
-                  SizedBox(
-                    width: 220,
-                    child: MetricCard(
-                      label: 'Mode',
-                      value: isPublic
-                          ? 'Public Assistant'
-                          : 'Engineering Copilot',
-                      note: isPublic
-                          ? 'Beginner-safe explanations'
-                          : 'Architecture-grade answers',
-                    ),
-                  ),
-                  SizedBox(
-                    width: 220,
-                    child: MetricCard(
-                      label: 'Retrieval',
-                      value:
-                          '${state.timings['retrieval_ms'] ?? state.timings['retrievalMs'] ?? 412}ms',
-                      note: isPublic
-                          ? 'Platform knowledge search'
-                          : 'Engineering Chroma search',
-                    ),
-                  ),
-                  SizedBox(
-                    width: 220,
-                    child: MetricCard(
-                      label: 'Latency',
-                      value:
-                          '${state.timings['total_ms'] ?? state.timings['totalMs'] ?? 1900}ms',
-                      note: 'Vertex AI + Chroma',
-                    ),
-                  ),
-                ],
-              ),
             if (quickPrompts.isNotEmpty) ...[
-              SizedBox(height: compactPage ? 12 : 16),
+              const SizedBox(height: 12),
               _PromptSuggestionsStrip(
                 prompts: quickPrompts,
                 onSelect: (prompt) => _controller.text = prompt,
               ),
             ],
-            SizedBox(height: compactPage ? 12 : 20),
+            const SizedBox(height: 12),
             Expanded(child: chatPanel),
           ],
         );

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http_parser/http_parser.dart';
 
@@ -29,6 +30,10 @@ class ChatStreamFrame {
   final String partialAnswer;
   final ChatResponseModel? response;
   final bool done;
+}
+
+Map<String, dynamic> _decodeJsonMap(String source) {
+  return Map<String, dynamic>.from(jsonDecode(source) as Map);
 }
 
 class IngestionUploadResult {
@@ -242,28 +247,23 @@ class AiApiService {
         options: Options(responseType: ResponseType.stream),
       );
 
-      final body = await utf8.decoder.bind(response.data!.stream).join();
       final contentType =
           response.headers.value(Headers.contentTypeHeader) ?? '';
 
       if (contentType.contains('text/event-stream')) {
-        yield* _streamFromSse(body);
+        yield* _streamFromSse(response.data!.stream);
         return;
       }
 
-      final decoded = jsonDecode(body) as Map<String, dynamic>;
+      final body = await utf8.decoder.bind(response.data!.stream).join();
+      final decoded = body.length >= 32000
+          ? await compute(_decodeJsonMap, body)
+          : _decodeJsonMap(body);
       final parsed = ChatResponseModel.fromJson(decoded);
       final answer = parsed.answer.trim();
 
       if (answer.isEmpty) {
         throw const ApiException('YenkasaAI returned an empty answer.');
-      }
-
-      var buffer = '';
-      for (final token in _tokenizeForStreaming(answer)) {
-        buffer += token;
-        yield ChatStreamFrame(partialAnswer: buffer);
-        await Future<void>.delayed(const Duration(milliseconds: 14));
       }
 
       yield ChatStreamFrame(
@@ -278,20 +278,28 @@ class AiApiService {
     }
   }
 
-  Stream<ChatStreamFrame> _streamFromSse(String body) async* {
+  Stream<ChatStreamFrame> _streamFromSse(Stream<Uint8List> byteStream) async* {
     var buffer = '';
     ChatResponseModel? finalResponse;
+    var lastEmittedLength = 0;
+    final emitClock = Stopwatch()..start();
 
-    for (final line in const LineSplitter().convert(body)) {
+    final lines = utf8.decoder.bind(byteStream).transform(const LineSplitter());
+    await for (final line in lines) {
       if (!line.startsWith('data:')) continue;
       final raw = line.substring(5).trim();
       if (raw.isEmpty || raw == '[DONE]') continue;
 
-      final payload = jsonDecode(raw) as Map<String, dynamic>;
+      final payload = _decodeJsonMap(raw);
       final delta = payload['delta'] as String? ?? '';
       if (delta.isNotEmpty) {
         buffer += delta;
-        yield ChatStreamFrame(partialAnswer: buffer);
+        final pendingCharacters = buffer.length - lastEmittedLength;
+        if (pendingCharacters >= 512 || emitClock.elapsedMilliseconds >= 120) {
+          lastEmittedLength = buffer.length;
+          emitClock.reset();
+          yield ChatStreamFrame(partialAnswer: buffer);
+        }
       }
 
       if (payload['done'] == true &&
@@ -316,11 +324,6 @@ class AiApiService {
       response: finalResponse,
       done: true,
     );
-  }
-
-  List<String> _tokenizeForStreaming(String text) {
-    final matches = RegExp(r'\S+\s*').allMatches(text);
-    return matches.map((match) => match.group(0) ?? '').toList();
   }
 
   ApiException _mapDioError(DioException error) {

@@ -73,34 +73,40 @@ class _AiShellState extends ConsumerState<AiShell> {
       drawerEnableOpenDragGesture: true,
       drawer: showSidebar
           ? null
-          : Drawer(
-              width: math.min(width * 0.88, 360),
-              backgroundColor: Colors.transparent,
-              surfaceTintColor: Colors.transparent,
-              shadowColor: Colors.transparent,
-              elevation: 0,
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 0, 0, 10),
-                  child: _SidebarPanel(
-                    currentRoute: currentRoute,
-                    expanded: true,
-                    isDesktop: false,
-                    displayName: _displayName(session),
-                    activePreset: activePreset,
-                    onToggleCollapse: null,
-                    onToggleRuntime: navController.toggleRuntimeExpanded,
-                    runtimeExpanded: navState.runtimeExpanded,
-                    onNavigate: (route) {
-                      Navigator.of(context).pop();
-                      _navigateToRoute(
-                        route,
-                        context,
-                        navController,
-                        handleLogout,
-                      );
-                    },
-                    secondaryDestinationsForRole: secondaryDestinationsForRole,
+          : Builder(
+              builder: (drawerContext) => Drawer(
+                width: math.min(width * 0.88, 360),
+                backgroundColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                elevation: 0,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 0, 0, 10),
+                    child: _SidebarPanel(
+                      currentRoute: currentRoute,
+                      expanded: true,
+                      isDesktop: false,
+                      displayName: _displayName(session),
+                      activePreset: activePreset,
+                      onToggleCollapse: null,
+                      onToggleRuntime: navController.toggleRuntimeExpanded,
+                      runtimeExpanded: navState.runtimeExpanded,
+                      onNavigate: (route) {
+                        Scaffold.of(drawerContext).closeDrawer();
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (!mounted) return;
+                          _navigateToRoute(
+                            route,
+                            context,
+                            navController,
+                            handleLogout,
+                          );
+                        });
+                      },
+                      secondaryDestinationsForRole:
+                          secondaryDestinationsForRole,
+                    ),
                   ),
                 ),
               ),
@@ -367,6 +373,7 @@ class _SidebarPanel extends StatelessWidget {
 
     return AiGlassPanel(
       strong: true,
+      blur: isDesktop,
       padding: EdgeInsets.fromLTRB(
         expanded ? 16 : 10,
         16,

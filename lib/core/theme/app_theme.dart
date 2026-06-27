@@ -263,25 +263,31 @@ class GlassBackdrop extends StatelessWidget {
     required this.child,
     this.strong = false,
     this.padding = const EdgeInsets.all(20),
+    this.blur = true,
   });
 
   final Widget child;
   final bool strong;
   final EdgeInsetsGeometry padding;
+  final bool blur;
 
   @override
   Widget build(BuildContext context) {
+    final content = AnimatedContainer(
+      duration: AiMotion.medium,
+      padding: padding,
+      decoration: glassDecoration(context, strong: strong),
+      child: child,
+    );
+
     return ClipRRect(
       borderRadius: AiRadius.panel,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: AnimatedContainer(
-          duration: AiMotion.medium,
-          padding: padding,
-          decoration: glassDecoration(context, strong: strong),
-          child: child,
-        ),
-      ),
+      child: blur
+          ? BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: content,
+            )
+          : content,
     );
   }
 }

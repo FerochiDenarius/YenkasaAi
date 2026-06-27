@@ -1,7 +1,7 @@
 name: yenkasa_ai_flutter
 description: "Production-grade Flutter frontend for YenkasaAI."
 publish_to: "none"
-version: 1.0.1+2
+version: 1.0.3+4
 
 environment:
   sdk: ^3.9.2

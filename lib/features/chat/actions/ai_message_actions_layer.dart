@@ -35,11 +35,7 @@ class AiMessageActionsLayer extends ConsumerStatefulWidget {
 
 class _AiMessageActionsLayerState extends ConsumerState<AiMessageActionsLayer>
     with TickerProviderStateMixin {
-  bool _expanded = false;
-
   bool get _isAssistant => widget.message.role == ChatRole.assistant;
-  bool get _isLong =>
-      AiResponseFormatter.isLongResponse(widget.message.content);
   bool get _isErrorResponse =>
       widget.message.content.startsWith('YenkasaAI could not answer');
 
@@ -224,10 +220,7 @@ class _AiMessageActionsLayerState extends ConsumerState<AiMessageActionsLayer>
                               markdown: widget.message.content.isEmpty
                                   ? '...'
                                   : widget.message.content,
-                              expanded: _expanded || !_isLong,
-                              onToggleExpanded: _isLong
-                                  ? () => setState(() => _expanded = !_expanded)
-                                  : null,
+                              isStreaming: widget.message.isStreaming,
                             )
                           else
                             SelectionArea(
@@ -401,18 +394,44 @@ class _ResponseActionBar extends StatelessWidget {
 class _AssistantResponseBody extends StatelessWidget {
   const _AssistantResponseBody({
     required this.markdown,
-    required this.expanded,
-    required this.onToggleExpanded,
+    required this.isStreaming,
   });
 
   final String markdown;
-  final bool expanded;
-  final VoidCallback? onToggleExpanded;
+  final bool isStreaming;
+
+  static const int _streamPreviewLimit = 8000;
+  static const int _largeResponseThreshold = 12000;
 
   @override
   Widget build(BuildContext context) {
+    if (isStreaming) {
+      final visibleText = markdown.length > _streamPreviewLimit
+          ? '${markdown.substring(0, _streamPreviewLimit)}\n\n'
+                'Response is still arriving…'
+          : markdown;
+      return SelectionArea(
+        child: SelectableText(
+          visibleText,
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.65),
+        ),
+      );
+    }
+
+    final displayMarkdown = AiResponseFormatter.forDisplay(markdown);
+
+    if (displayMarkdown.length > _largeResponseThreshold) {
+      return _LargeResponseView(markdown: displayMarkdown);
+    }
+
     final styleSheet = MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
       p: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.65),
+      blockSpacing: 14,
+      listIndent: 28,
+      listBullet: Theme.of(context).textTheme.bodyLarge?.copyWith(
+        height: 1.65,
+        fontWeight: FontWeight.w700,
+      ),
       h1: Theme.of(
         context,
       ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
@@ -439,55 +458,121 @@ class _AssistantResponseBody extends StatelessWidget {
       ),
     );
 
-    final body = SelectionArea(
+    return SelectionArea(
       child: MarkdownBody(
-        data: markdown,
+        data: displayMarkdown,
         selectable: true,
         softLineBreak: true,
         styleSheet: styleSheet,
       ),
     );
+  }
+}
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final screenHeight = MediaQuery.sizeOf(context).height;
-        final maxBodyHeight = screenHeight * (expanded ? 0.58 : 0.36);
+class _LargeResponseView extends StatefulWidget {
+  const _LargeResponseView({required this.markdown});
 
-        return AnimatedSize(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: maxBodyHeight),
-                child: Scrollbar(
-                  thumbVisibility: expanded,
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    child: body,
-                  ),
-                ),
+  final String markdown;
+
+  @override
+  State<_LargeResponseView> createState() => _LargeResponseViewState();
+}
+
+class _LargeResponseViewState extends State<_LargeResponseView> {
+  late final ScrollController _controller;
+  late List<String> _sections;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = ScrollController();
+    _sections = _splitIntoSections(widget.markdown);
+  }
+
+  @override
+  void didUpdateWidget(covariant _LargeResponseView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.markdown != widget.markdown) {
+      _sections = _splitIntoSections(widget.markdown);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  List<String> _splitIntoSections(String value) {
+    const targetSize = 3600;
+    final paragraphs = value.split(RegExp(r'\n{2,}'));
+    final sections = <String>[];
+    var buffer = StringBuffer();
+
+    for (final paragraph in paragraphs) {
+      if (buffer.isNotEmpty &&
+          buffer.length + paragraph.length + 2 > targetSize) {
+        sections.add(buffer.toString());
+        buffer = StringBuffer();
+      }
+      if (buffer.isNotEmpty) buffer.write('\n\n');
+      buffer.write(paragraph);
+    }
+    if (buffer.isNotEmpty) sections.add(buffer.toString());
+    return sections;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final viewerHeight = math.min(
+      math.max(MediaQuery.sizeOf(context).height * 0.64, 360.0),
+      720.0,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.article_outlined,
+              size: 17,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Large response · ${widget.markdown.length} characters',
+                style: Theme.of(
+                  context,
+                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
-              if (onToggleExpanded != null) ...[
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: onToggleExpanded,
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(expanded ? 'Collapse' : 'Expand response'),
-                ),
-              ],
-            ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: viewerHeight,
+          child: Scrollbar(
+            controller: _controller,
+            thumbVisibility: true,
+            child: ListView.separated(
+              controller: _controller,
+              primary: false,
+              padding: const EdgeInsets.only(right: 14),
+              physics: const ClampingScrollPhysics(),
+              itemCount: _sections.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 14),
+              itemBuilder: (context, index) => SelectableText(
+                _sections[index],
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(height: 1.65),
+              ),
+            ),
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 }
