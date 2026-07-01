@@ -2,6 +2,7 @@ import 'dart:developer' as developer;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/network/api_client.dart';
 import '../../data/auth_repository.dart';
 import '../../domain/auth_session.dart';
 
@@ -22,6 +23,15 @@ class AuthController extends AsyncNotifier<AuthSession?> {
   @override
   Future<AuthSession?> build() async {
     _repository = ref.read(authRepositoryProvider);
+    ref.listen<int>(authSessionInvalidationProvider, (previous, next) {
+      if (next > (previous ?? 0)) {
+        developer.log(
+          'session invalidated by API client',
+          name: 'auth_controller',
+        );
+        state = const AsyncData(null);
+      }
+    });
     ref.read(authBootstrapCompleteProvider.notifier).state = false;
     developer.log('auth controller build started', name: 'auth_controller');
     try {

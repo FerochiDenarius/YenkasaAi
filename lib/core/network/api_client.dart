@@ -14,6 +14,8 @@ final authApiClientProvider = Provider<Dio>((ref) {
   return _buildClient(ref, baseUrl: AppConfig.authApiBaseUrl);
 });
 
+final authSessionInvalidationProvider = StateProvider<int>((ref) => 0);
+
 Dio buildPlainDio({required String baseUrl}) {
   return Dio(
     BaseOptions(
@@ -72,6 +74,10 @@ Dio _buildClient(Ref ref, {required String baseUrl}) {
           statusCode: error.response?.statusCode,
         );
         if (!_shouldAttemptTokenRefresh(error)) {
+          if (_isUnauthorized(error.response?.statusCode) &&
+              error.requestOptions.extra['_authRetried'] == true) {
+            await _invalidateSession(ref);
+          }
           handler.next(error);
           return;
         }
@@ -80,6 +86,7 @@ Dio _buildClient(Ref ref, {required String baseUrl}) {
         final current = await storage.load();
         final refreshToken = current?.refreshToken ?? '';
         if (refreshToken.isEmpty) {
+          await _invalidateSession(ref);
           handler.next(error);
           return;
         }
@@ -106,8 +113,7 @@ Dio _buildClient(Ref ref, {required String baseUrl}) {
           return;
         } on DioException catch (refreshError) {
           if (_isUnauthorized(refreshError.response?.statusCode)) {
-            await storage.clear();
-            ref.read(authTokenProvider.notifier).state = null;
+            await _invalidateSession(ref);
           }
         } catch (_) {
           // Preserve the cached session on transient refresh failures.
@@ -119,6 +125,12 @@ Dio _buildClient(Ref ref, {required String baseUrl}) {
   );
 
   return dio;
+}
+
+Future<void> _invalidateSession(Ref ref) async {
+  await ref.read(authSessionStorageProvider).clear();
+  ref.read(authTokenProvider.notifier).state = null;
+  ref.read(authSessionInvalidationProvider.notifier).state++;
 }
 
 bool _shouldAttemptTokenRefresh(DioException error) {

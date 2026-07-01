@@ -226,11 +226,14 @@ class AuthLogoOrb extends StatelessWidget {
   Widget build(BuildContext context) {
     final image = Padding(
       padding: padding,
-      child: Image.asset(
-        AppConfig.logoAsset,
-        width: size,
-        height: size,
-        fit: BoxFit.contain,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(size * 0.2),
+        child: Image.asset(
+          AppConfig.logoAsset,
+          width: size,
+          height: size,
+          fit: BoxFit.contain,
+        ),
       ),
     );
 
