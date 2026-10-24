@@ -42,7 +42,7 @@ only for local troubleshooting when secure storage is unavailable.
 ## Development checks
 
 ```bash
-dart format --output=none --set-exit-if-changed lib test tool
+dart format lib test tool
 flutter analyze
 flutter test
 ```

@@ -15,7 +15,8 @@
 - Add or update tests for behavior changes.
 - Do not commit credentials, `android/key.properties`, local environment files,
   build output, or generated tool directories.
-- Run `dart format --set-exit-if-changed lib test tool`.
+- Run `dart format lib test tool` before submitting. CI enforces strict
+  formatting on Dart files changed by the pull request.
 
 ## Release builds
 
