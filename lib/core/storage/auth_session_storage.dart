@@ -52,10 +52,13 @@ class AuthSessionStorage {
       await prefs.remove(_authSessionFallbackKey);
     } catch (error, stackTrace) {
       developer.log(
-        'secure storage save failed, using fallback storage error=$error',
+        'secure storage save failed error=$error',
         name: 'auth_storage',
         stackTrace: stackTrace,
       );
+      if (!AppConfig.allowInsecureAuthFallback) {
+        rethrow;
+      }
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_authSessionFallbackKey, encoded);
     }
@@ -67,12 +70,15 @@ class AuthSessionStorage {
       raw = await _storage.read(key: _authSessionKey);
     } catch (error, stackTrace) {
       developer.log(
-        'secure storage load failed, checking fallback storage error=$error',
+        'secure storage load failed error=$error',
         name: 'auth_storage',
         stackTrace: stackTrace,
       );
+      if (!AppConfig.allowInsecureAuthFallback) {
+        rethrow;
+      }
     }
-    if (raw == null || raw.isEmpty) {
+    if (AppConfig.allowInsecureAuthFallback && (raw == null || raw.isEmpty)) {
       final prefs = await SharedPreferences.getInstance();
       raw = prefs.getString(_authSessionFallbackKey);
       if (raw != null && raw.isNotEmpty) {

@@ -51,10 +51,7 @@ class AuthController extends AsyncNotifier<AuthSession?> {
     required String identifier,
     required String password,
   }) async {
-    developer.log(
-      'login requested identifier=$identifier',
-      name: 'auth_controller',
-    );
+    developer.log('login requested', name: 'auth_controller');
     state = const AsyncLoading();
     final result = await AsyncValue.guard(
       () => _repository.loginWithYenkasaApp(
@@ -82,7 +79,7 @@ class AuthController extends AsyncNotifier<AuthSession?> {
     required bool agreeToTerms,
     String preferredLanguage = 'en',
   }) async {
-    developer.log('register requested email=$email', name: 'auth_controller');
+    developer.log('register requested', name: 'auth_controller');
     state = const AsyncLoading();
     final result = await AsyncValue.guard(
       () => _repository.registerWithYenkasaApp(

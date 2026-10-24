@@ -46,5 +46,3 @@ app.*.map.json
 .env
 *.env
 .external_staging/
-.external_staging/
-*.env

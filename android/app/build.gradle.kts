@@ -55,11 +55,13 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (keystorePropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            if (!keystorePropertiesFile.exists()) {
+                throw GradleException(
+                    "android/key.properties is required to build a release artifact. " +
+                        "Configure signing credentials through CI secrets or a local ignored file.",
+                )
             }
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

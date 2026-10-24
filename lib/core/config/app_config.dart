@@ -1,5 +1,11 @@
 class AppConfig {
   static const String appName = 'YenkasaAi';
+  static const String environment = String.fromEnvironment(
+    'YENKASA_ENV',
+    defaultValue: 'development',
+  );
+  static const bool isProduction = environment == 'production';
+
   static const String _productionAiBackendBaseUrl =
       'https://yenkasa-ai-backend-496173204476.europe-west1.run.app';
   static const String _productionAuthServerBaseUrl =
@@ -13,15 +19,25 @@ class AppConfig {
   static const String localDebugAiApiBaseUrl = localDebugServerBaseUrl;
   static const String aiApiBaseUrl = String.fromEnvironment(
     'YENKASA_AI_API_BASE_URL',
-    defaultValue: _productionAiApiBaseUrl,
+    defaultValue: isProduction
+        ? _productionAiApiBaseUrl
+        : localDebugAiApiBaseUrl,
   );
   static const String authApiBaseUrl = String.fromEnvironment(
     'YENKASA_AUTH_API_BASE_URL',
-    defaultValue: _productionAuthServerBaseUrl,
+    defaultValue: isProduction
+        ? _productionAuthServerBaseUrl
+        : localDebugAuthServerBaseUrl,
   );
   static const String publicAiEngineBaseUrl = String.fromEnvironment(
     'YENKASA_PUBLIC_AI_ENGINE_BASE_URL',
-    defaultValue: _productionPublicAiEngineBaseUrl,
+    defaultValue: isProduction
+        ? _productionPublicAiEngineBaseUrl
+        : localPublicAiEngineBaseUrl,
+  );
+  static const bool allowInsecureAuthFallback = bool.fromEnvironment(
+    'YENKASA_ALLOW_INSECURE_AUTH_FALLBACK',
+    defaultValue: false,
   );
   static const Duration requestTimeout = Duration(seconds: 30);
   static const Duration receiveTimeout = Duration(seconds: 90);

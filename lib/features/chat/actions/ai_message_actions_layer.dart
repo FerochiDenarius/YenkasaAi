@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/chat_message.dart';
@@ -528,6 +528,23 @@ class _LargeResponseViewState extends State<_LargeResponseView> {
       math.max(MediaQuery.sizeOf(context).height * 0.64, 360.0),
       720.0,
     );
+    final styleSheet = MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+      p: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.7),
+      blockSpacing: 16,
+      listIndent: 30,
+      listBullet: Theme.of(
+        context,
+      ).textTheme.bodyLarge?.copyWith(height: 1.7, fontWeight: FontWeight.w800),
+      code: Theme.of(context).textTheme.bodyMedium?.copyWith(
+        color: Colors.white,
+        backgroundColor: Colors.white.withValues(alpha: 0.08),
+      ),
+      codeblockDecoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -562,12 +579,15 @@ class _LargeResponseViewState extends State<_LargeResponseView> {
               padding: const EdgeInsets.only(right: 14),
               physics: const ClampingScrollPhysics(),
               itemCount: _sections.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 14),
-              itemBuilder: (context, index) => SelectableText(
-                _sections[index],
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyLarge?.copyWith(height: 1.65),
+              separatorBuilder: (_, __) => Divider(
+                height: 28,
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+              itemBuilder: (context, index) => MarkdownBody(
+                data: _sections[index],
+                selectable: true,
+                softLineBreak: true,
+                styleSheet: styleSheet,
               ),
             ),
           ),
