@@ -1,0 +1,617 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+2 0 obj
+<< /Length 3168 >>
+stream
+BT
+/F1 10 Tf
+40 742 Td
+(# Yenkasa Backend Wiring Reference) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Last updated: 2026-05-28) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(## Purpose) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(This document is the canonical wiring reference for YenkasaAi, the Yenkasa app backend, the ) Tj
+0 -12 Td
+(store backend, the YME/OIL bridge, and the intelligence layer. Use this file before changing) Tj
+0 -12 Td
+( URLs, auth flows, relay targets, or AI integration code.) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(## Canonical system map) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(| System | Local source | Runtime target | Public URL / access | Role |) Tj
+0 -12 Td
+(| --- | --- | --- | --- | --- |) Tj
+0 -12 Td
+(| YenkasaAi frontend | `/Users/kofibright/StudioProjects/YenkasaAi` | Flutter apps: macOS, ) Tj
+0 -12 Td
+(Windows, Android, iOS, Web | local builds | User-facing AI client |) Tj
+0 -12 Td
+(| YenkasaAi backend | `/Users/kofibright/Desktop/yenkasa-ai/backend` | Google Cloud Run ) Tj
+0 -12 Td
+(service `yenkasa-ai-backend` | `https://yenkasa-ai-backend-496173204476.europe-) Tj
+0 -12 Td
+(west1.run.app` | Canonical AI backend |) Tj
+0 -12 Td
+(| Yenkasa app backend | `/Users/kofibright/yenkasaChat/yenkasaChatBackend/RegLoginBackend` |) Tj
+0 -12 Td
+( DigitalOcean app | `https://yenkasa-8rjea.ondigitalocean.app` | Social app, auth, feed, ) Tj
+0 -12 Td
+(live events, YME source |) Tj
+0 -12 Td
+(| Yenkasa store upstream | remote host | upstream commerce API | ) Tj
+0 -12 Td
+(`http://134.209.182.39:8080` | Store upstream behind the store proxy |) Tj
+0 -12 Td
+(| Yenkasa store SSH access | remote host | direct shell access | `ssh -i ) Tj
+0 -12 Td
+(/Users/kofibright/Desktop/Safe/DenariusWebsite/denariuskeyssh.txt root@134.209.182.39` | ) Tj
+0 -12 Td
+(Store server administration |) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(## YenkasaAi frontend wiring) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(The frontend in `/Users/kofibright/StudioProjects/YenkasaAi` must treat the Cloud Run ) Tj
+0 -12 Td
+(backend as the canonical auth, chat, search, health, and session backend.) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Canonical runtime target:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- `https://yenkasa-ai-backend-496173204476.europe-west1.run.app`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Relevant frontend config:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- `lib/core/config/app_config.dart`) Tj
+0 -12 Td
+(- `lib/core/network/api_client.dart`) Tj
+0 -12 Td
+(- `lib/features/auth/data/auth_service.dart`) Tj
+0 -12 Td
+(- `lib/features/chat/data/ai_api_service.dart`) Tj
+0 -12 Td
+(- `lib/core/storage/auth_session_storage.dart`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Expected contract from the frontend to the YenkasaAi backend:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- auth login: `POST /api/auth/login`) Tj
+0 -12 Td
+(- auth refresh: `POST /api/auth/refresh`) Tj
+0 -12 Td
+(- auth me: `GET /api/auth/me`) Tj
+0 -12 Td
+(- health: `GET /health`) Tj
+0 -12 Td
+(- chat: `POST /chat`) Tj
+0 -12 Td
+(- search: `POST /search`) Tj
+0 -12 Td
+(- YME memory endpoints: `GET /api/yme/health`, `GET /api/yme/search`, `GET ) Tj
+0 -12 Td
+(  /api/yme/memories`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Important rule:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- The new frontend must not default auth/chat to the DigitalOcean Yenkasa app backend.) Tj
+ET
+endstream
+endobj
+3 0 obj
+<< /Length 2421 >>
+stream
+BT
+/F1 10 Tf
+40 742 Td
+() Tj
+0 -12 Td
+(## YenkasaAi backend) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Canonical backend repo:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- `/Users/kofibright/Desktop/yenkasa-ai/backend`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Canonical deployed service:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- Cloud Run service name: `yenkasa-ai-backend`) Tj
+0 -12 Td
+(- Public URL: `https://yenkasa-ai-backend-496173204476.europe-west1.run.app`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Primary route groups:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- legacy AI: `GET /health`, `POST /chat`, `POST /search`, `POST /ingest`) Tj
+0 -12 Td
+(- auth: `/api/auth/*`) Tj
+0 -12 Td
+(- event ingest: `POST /api/events`, `POST /api/events/ingest`) Tj
+0 -12 Td
+(- YME memory: `/api/yme/*`) Tj
+0 -12 Td
+(- repo intelligence: `/api/repo/*`) Tj
+0 -12 Td
+(- admin intelligence: `/api/admin/*`) Tj
+0 -12 Td
+(- logs and alerts: `/api/logs`, `/api/alerts`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Important backend docs:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- `/Users/kofibright/Desktop/yenkasa-ai/backend/README.md`) Tj
+0 -12 Td
+(- `/Users/kofibright/Desktop/yenkasa-ai/backend/docs/architecture.md`) Tj
+0 -12 Td
+(- `/Users/kofibright/Desktop/yenkasa-ai/backend/docs/deployment.md`) Tj
+0 -12 Td
+(- `/Users/kofibright/Desktop/yenkasa-ai/backend/docs/auth_architecture.md`) Tj
+0 -12 Td
+(- `/Users/kofibright/Desktop/yenkasa-ai/backend/docs/yme_architecture.md`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(## Yenkasa app backend) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Canonical app backend repo:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- `/Users/kofibright/yenkasaChat/yenkasaChatBackend/RegLoginBackend`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Canonical deployed URL:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- `https://yenkasa-8rjea.ondigitalocean.app`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Responsibilities:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- main Yenkasa social application) Tj
+0 -12 Td
+(- feed, views, chatrooms, communities, profiles, live and livestream features) Tj
+0 -12 Td
+(- YME event source generation) Tj
+0 -12 Td
+(- AI relay source for intelligence events) Tj
+0 -12 Td
+(- store proxy mounting) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Important mounted backend routes:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- `GET /health`) Tj
+0 -12 Td
+(- `POST /api/views/:viewId/view`) Tj
+0 -12 Td
+(- `POST /api/ai/chat`) Tj
+0 -12 Td
+(- `GET /api/ai/relay/health`) Tj
+0 -12 Td
+(- `/api/yme/*`) Tj
+0 -12 Td
+(- `/triciabales-api/*`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(## Store backend and store proxy) Tj
+0 -12 Td
+() Tj
+ET
+endstream
+endobj
+4 0 obj
+<< /Length 2879 >>
+stream
+BT
+/F1 10 Tf
+40 742 Td
+(The store layer is not a standalone module inside the main Yenkasa app backend. It is a ) Tj
+0 -12 Td
+(proxy plus local asset/data layer.) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Store proxy facts:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- mounted by the Yenkasa app backend) Tj
+0 -12 Td
+(- proxy prefix: `/triciabales-api`) Tj
+0 -12 Td
+(- upstream base: `TRICIABALES_API_BASE`) Tj
+0 -12 Td
+(- source-coded upstream fallback: `http://134.209.182.39:8080`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Remote store access:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- SSH: `ssh -i /Users/kofibright/Desktop/Safe/DenariusWebsite/denariuskeyssh.txt ) Tj
+0 -12 Td
+(  root@134.209.182.39`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Reference doc:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- `/Users/kofibright/yenkasaChat/yenkasa_knowledge/STORE_PROXY_AND_INTEGRATION.md`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(## OIL / intelligence bridge wiring) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(This document uses "OIL bridge" to mean the event and AI bridge between the Yenkasa app ) Tj
+0 -12 Td
+(backend and the YenkasaAi backend.) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Bridge source code in the Yenkasa app backend:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- relay service: `src/intelligence/services/eventPublisher.service.js`) Tj
+0 -12 Td
+(- AI provider bridge: `src/ai/providers/fastapi.provider.js`) Tj
+0 -12 Td
+(- relay health route: `src/ai/routes/index.js`) Tj
+0 -12 Td
+(- YME publish entrypoint: `src/yme/services/eventPublisher.service.js`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Bridge flow:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(1. Social or YME events are generated inside the Yenkasa app backend.) Tj
+0 -12 Td
+(2. `src/yme/services/eventPublisher.service.js` ingests the local YME event.) Tj
+0 -12 Td
+(3. The same publisher maps eligible events to intelligence events.) Tj
+0 -12 Td
+(4. `src/intelligence/services/eventPublisher.service.js` sends them to the YenkasaAi ) Tj
+0 -12 Td
+(backend.) Tj
+0 -12 Td
+(5. The YenkasaAi backend receives them on `POST /api/events` or `POST /api/events/ingest`.) Tj
+0 -12 Td
+(6. The YenkasaAi backend records the event and asynchronously processes it into YME memory ) Tj
+0 -12 Td
+(and analytics state.) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Bridge auth:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- header: `X-Event-Api-Key`) Tj
+0 -12 Td
+(- app backend envs checked in order:) Tj
+0 -12 Td
+(  - `YENKASA_AI_EVENT_API_KEY`) Tj
+0 -12 Td
+(  - `INTERNAL_PLATFORM_API_KEY`) Tj
+0 -12 Td
+(  - `LOG_INGEST_API_KEY`) Tj
+0 -12 Td
+(- AI backend envs used for verification:) Tj
+0 -12 Td
+(  - `event_ingest_api_key`) Tj
+0 -12 Td
+(  - `internal_platform_api_key`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Bridge operational endpoints:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- Yenkasa app backend relay health: ) Tj
+0 -12 Td
+(  `https://yenkasa-8rjea.ondigitalocean.app/api/ai/relay/health`) Tj
+0 -12 Td
+(- with target probe: ) Tj
+0 -12 Td
+(  `https://yenkasa-8rjea.ondigitalocean.app/api/ai/relay/health?probe=true`) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Length 2664 >>
+stream
+BT
+/F1 10 Tf
+40 742 Td
+() Tj
+0 -12 Td
+(Bridge env vars that matter:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- `YENKASA_AI_ENGINE_URL`) Tj
+0 -12 Td
+(- `YENKASA_AI_ENGINE_API_PREFIX`) Tj
+0 -12 Td
+(- `YENKASA_AI_EVENT_INGEST_URL`) Tj
+0 -12 Td
+(- `YENKASA_AI_EVENT_INGEST_PATH`) Tj
+0 -12 Td
+(- `YENKASA_AI_EVENT_HEALTH_URL`) Tj
+0 -12 Td
+(- `YENKASA_AI_EVENT_HEALTH_PATH`) Tj
+0 -12 Td
+(- `YENKASA_AI_EVENT_API_KEY`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Canonical bridge target:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- `https://yenkasa-ai-backend-496173204476.europe-west1.run.app`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Canonical event ingest path:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- `/api/events`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Canonical legacy AI proxy target paths:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- `/chat`) Tj
+0 -12 Td
+(- `/search`) Tj
+0 -12 Td
+(- `/health`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(## Intelligence layer wiring) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(The YenkasaAi backend runs two layers in one service:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- legacy RAG runtime for `/chat`, `/search`, `/ingest`) Tj
+0 -12 Td
+(- authenticated intelligence runtime for auth, repo intelligence, events, YME, analytics, ) Tj
+0 -12 Td
+(  sessions, and admin features) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Relevant runtime groups:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- auth: `/api/auth/*`) Tj
+0 -12 Td
+(- repo intelligence: `/api/repo/*`) Tj
+0 -12 Td
+(- events: `/api/events`, `/api/events/ingest`) Tj
+0 -12 Td
+(- YME memory: `/api/yme/*`) Tj
+0 -12 Td
+(- admin intelligence: `/api/admin/*`) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(YME memory flow on the AI backend:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(1. user or backend event reaches the AI backend) Tj
+0 -12 Td
+(2. event is recorded into the event store) Tj
+0 -12 Td
+(3. background processing derives memories, graph edges, summaries, and embeddings) Tj
+0 -12 Td
+(4. `/chat` retrieves relevant memories and injects them into the prompt context) Tj
+0 -12 Td
+(5. responses and interactions are tracked back into the intelligence runtime) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(## Known bad targets and bad assumptions) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Do not treat these as canonical unless intentionally reintroduced and documented:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- `https://yenkasa-ai-496173204476.europe-west1.run.app`) Tj
+0 -12 Td
+(- `POST /api/auth/token/refresh` on the real Cloud Run backend) Tj
+0 -12 Td
+(- `POST /api/ai/chat` as the primary public chat route for the real Cloud Run backend) Tj
+0 -12 Td
+(- defaulting the frontend auth/chat backend to `https://yenkasa-8rjea.ondigitalocean.app`) Tj
+0 -12 Td
+(- defaulting the app backend FastAPI provider to `/api/ai` when targeting the Cloud Run ) Tj
+0 -12 Td
+(  backend legacy routes) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Length 1608 >>
+stream
+BT
+/F1 10 Tf
+40 742 Td
+() Tj
+0 -12 Td
+(## 2026-05-28 fix summary) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Frontend fixes in `/Users/kofibright/StudioProjects/YenkasaAi`:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- unified auth/chat/search/health routing onto `https://yenkasa-ai-) Tj
+0 -12 Td
+(  backend-496173204476.europe-west1.run.app`) Tj
+0 -12 Td
+(- stopped using the wrong refresh alias as the canonical path) Tj
+0 -12 Td
+(- migrated persisted sessions onto the canonical AI backend origin) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Yenkasa app backend fixes in ) Tj
+0 -12 Td
+(`/Users/kofibright/yenkasaChat/yenkasaChatBackend/RegLoginBackend`:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(- changed the intelligence relay default target from `yenkasa-ai` to `yenkasa-ai-backend`) Tj
+0 -12 Td
+(- changed the FastAPI provider default target from `yenkasa-ai` to `yenkasa-ai-backend`) Tj
+0 -12 Td
+(- changed the FastAPI provider default API prefix from `/api/ai` to empty so it calls the ) Tj
+0 -12 Td
+(  Cloud Run legacy routes correctly) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(## Change safety checklist) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(Before changing any backend wiring:) Tj
+0 -12 Td
+() Tj
+0 -12 Td
+(1. confirm which repo is being changed) Tj
+0 -12 Td
+(2. confirm the deployed runtime URL) Tj
+0 -12 Td
+(3. confirm the auth refresh route) Tj
+0 -12 Td
+(4. confirm whether the target chat path is `/chat` or `/api/ai/chat`) Tj
+0 -12 Td
+(5. confirm whether the event relay target is `yenkasa-ai-backend`) Tj
+0 -12 Td
+(6. confirm whether `X-Event-Api-Key` is configured on both sides) Tj
+0 -12 Td
+(7. update this document if any canonical URL or route contract changes) Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Pages /Count 5 /Kids [ 8 0 R 9 0 R 10 0 R 11 0 R 12 0 R ] >>
+endobj
+8 0 obj
+<< /Type /Page /Parent 7 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 2 0 R >>
+endobj
+9 0 obj
+<< /Type /Page /Parent 7 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 3 0 R >>
+endobj
+10 0 obj
+<< /Type /Page /Parent 7 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 4 0 R >>
+endobj
+11 0 obj
+<< /Type /Page /Parent 7 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 5 0 R >>
+endobj
+12 0 obj
+<< /Type /Page /Parent 7 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 1 0 R >> >> /Contents 6 0 R >>
+endobj
+13 0 obj
+<< /Type /Catalog /Pages 7 0 R >>
+endobj
+xref
+0 14
+0000000000 65535 f 
+0000000015 00000 n 
+0000000083 00000 n 
+0000003303 00000 n 
+0000005776 00000 n 
+0000008707 00000 n 
+0000011423 00000 n 
+0000013083 00000 n 
+0000013169 00000 n 
+0000013295 00000 n 
+0000013421 00000 n 
+0000013548 00000 n 
+0000013675 00000 n 
+0000013802 00000 n 
+trailer
+<< /Size 14 /Root 13 0 R >>
+startxref
+13852
+%%EOF

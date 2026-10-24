@@ -1,0 +1,354 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http_parser/http_parser.dart';
+
+import '../../../core/config/app_config.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../models/backend_health.dart';
+import '../models/chat_message.dart';
+import '../models/chat_models.dart';
+
+final aiApiServiceProvider = Provider<AiApiService>((ref) {
+  return AiApiService(
+    ref.watch(apiClientProvider),
+    publicEngineDio: buildPlainDio(baseUrl: AppConfig.publicAiEngineBaseUrl),
+  );
+});
+
+class ChatStreamFrame {
+  const ChatStreamFrame({
+    required this.partialAnswer,
+    this.response,
+    this.done = false,
+  });
+
+  final String partialAnswer;
+  final ChatResponseModel? response;
+  final bool done;
+}
+
+Map<String, dynamic> _decodeJsonMap(String source) {
+  return Map<String, dynamic>.from(jsonDecode(source) as Map);
+}
+
+class IngestionUploadResult {
+  const IngestionUploadResult({
+    required this.accepted,
+    required this.targetCollection,
+    this.chunksInserted,
+    this.uploadedToGcs,
+  });
+
+  factory IngestionUploadResult.fromJson(Map<String, dynamic> json) {
+    return IngestionUploadResult(
+      accepted: _readInt(json['accepted'] ?? json['accepted_files']),
+      targetCollection:
+          (json['targetCollection'] ??
+                  json['target_collection'] ??
+                  'yenkasa_research')
+              .toString(),
+      chunksInserted: _readNullableInt(
+        json['chunksInserted'] ?? json['chunks_inserted'],
+      ),
+      uploadedToGcs:
+          json['uploadedToGcs'] as bool? ?? json['uploaded_to_gcs'] as bool?,
+    );
+  }
+
+  final int accepted;
+  final String targetCollection;
+  final int? chunksInserted;
+  final bool? uploadedToGcs;
+}
+
+class OcrAnalysisResult {
+  const OcrAnalysisResult({
+    required this.text,
+    required this.confidence,
+    required this.language,
+    required this.summary,
+    required this.fileName,
+    required this.contentType,
+    required this.blockCount,
+    required this.cached,
+  });
+
+  factory OcrAnalysisResult.fromJson(Map<String, dynamic> json) {
+    final blocks = json['blocks'];
+    return OcrAnalysisResult(
+      text: (json['text'] ?? '').toString(),
+      confidence: _readDouble(json['confidence']),
+      language: (json['language'] ?? 'unknown').toString(),
+      summary: (json['summary'] ?? '').toString(),
+      fileName: (json['fileName'] ?? json['file_name'] ?? '').toString(),
+      contentType: (json['contentType'] ?? json['content_type'] ?? '')
+          .toString(),
+      blockCount: blocks is List ? blocks.length : 0,
+      cached: json['cached'] == true,
+    );
+  }
+
+  final String text;
+  final double confidence;
+  final String language;
+  final String summary;
+  final String fileName;
+  final String contentType;
+  final int blockCount;
+  final bool cached;
+}
+
+int _readInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+int? _readNullableInt(Object? value) {
+  if (value == null) return null;
+  return _readInt(value);
+}
+
+double _readDouble(Object? value) {
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+class AiApiService {
+  AiApiService(this._dio, {required Dio publicEngineDio})
+    : _publicEngineDio = publicEngineDio;
+
+  final Dio _dio;
+  final Dio _publicEngineDio;
+
+  Future<BackendHealth> fetchHealth() async {
+    try {
+      final response = await _publicEngineDio.get<Map<String, dynamic>>(
+        '/health',
+      );
+      return BackendHealth.fromJson(response.data ?? const {});
+    } on DioException catch (error) {
+      throw _mapDioError(error);
+    }
+  }
+
+  Future<SearchResponseModel> search({
+    required String question,
+    String audience = 'public',
+    int? topK,
+  }) async {
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/search',
+        data: {
+          'question': question,
+          'audience': audience,
+          if (topK != null) 'top_k': topK,
+        },
+      );
+      return SearchResponseModel.fromJson(response.data ?? const {});
+    } on DioException catch (error) {
+      throw _mapDioError(error);
+    }
+  }
+
+  Future<IngestionUploadResult> uploadKnowledgePdfs({
+    required List<MultipartFile> files,
+    String audience = 'engineering',
+    void Function(int sent, int total)? onSendProgress,
+  }) async {
+    try {
+      final formData = FormData.fromMap({'audience': audience, 'files': files});
+
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/ingest',
+        data: formData,
+        onSendProgress: onSendProgress,
+        options: Options(
+          contentType: 'multipart/form-data',
+          sendTimeout: const Duration(minutes: 5),
+          receiveTimeout: const Duration(minutes: 5),
+        ),
+      );
+
+      return IngestionUploadResult.fromJson(response.data ?? const {});
+    } on DioException catch (error) {
+      throw _mapDioError(error);
+    }
+  }
+
+  Future<OcrAnalysisResult> analyzeAttachmentWithOcr({
+    required String path,
+    required String fileName,
+    required String question,
+  }) async {
+    final contentType = _contentTypeForFile(fileName);
+    if (contentType == null) {
+      throw ApiException('OCR is not available for $fileName.');
+    }
+
+    try {
+      final formData = FormData.fromMap({
+        'question': question,
+        'file': await MultipartFile.fromFile(
+          path,
+          filename: fileName,
+          contentType: contentType,
+        ),
+      });
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/ocr/analyze',
+        data: formData,
+        options: Options(
+          contentType: 'multipart/form-data',
+          sendTimeout: const Duration(minutes: 3),
+          receiveTimeout: const Duration(minutes: 5),
+        ),
+      );
+      return OcrAnalysisResult.fromJson(response.data ?? const {});
+    } on DioException catch (error) {
+      throw _mapDioError(error);
+    }
+  }
+
+  MediaType? _contentTypeForFile(String fileName) {
+    final extension = fileName.split('.').last.toLowerCase();
+    return switch (extension) {
+      'jpg' || 'jpeg' => MediaType('image', 'jpeg'),
+      'png' => MediaType('image', 'png'),
+      'webp' => MediaType('image', 'webp'),
+      'pdf' => MediaType('application', 'pdf'),
+      _ => null,
+    };
+  }
+
+  Stream<ChatStreamFrame> streamChat({
+    required String question,
+    required List<ChatMessage> history,
+    required String audience,
+    String? conversationId,
+    bool includeDebug = false,
+  }) async* {
+    try {
+      final response = await _dio.post<ResponseBody>(
+        '/chat',
+        data: {
+          'question': question,
+          'history': history.map((item) => item.toApiJson()).toList(),
+          'audience': audience,
+          'include_debug': includeDebug,
+        },
+        options: Options(responseType: ResponseType.stream),
+      );
+
+      final contentType =
+          response.headers.value(Headers.contentTypeHeader) ?? '';
+
+      if (contentType.contains('text/event-stream')) {
+        yield* _streamFromSse(response.data!.stream);
+        return;
+      }
+
+      final body = await utf8.decoder.bind(response.data!.stream).join();
+      final decoded = body.length >= 32000
+          ? await compute(_decodeJsonMap, body)
+          : _decodeJsonMap(body);
+      final parsed = ChatResponseModel.fromJson(decoded);
+      final answer = parsed.answer.trim();
+
+      if (answer.isEmpty) {
+        throw const ApiException('YenkasaAI returned an empty answer.');
+      }
+
+      yield ChatStreamFrame(
+        partialAnswer: answer,
+        response: parsed,
+        done: true,
+      );
+    } on DioException catch (error) {
+      throw _mapDioError(error);
+    } on FormatException {
+      throw const ApiException('YenkasaAI returned an unreadable response.');
+    }
+  }
+
+  Stream<ChatStreamFrame> _streamFromSse(Stream<Uint8List> byteStream) async* {
+    var buffer = '';
+    ChatResponseModel? finalResponse;
+    var lastEmittedLength = 0;
+    final emitClock = Stopwatch()..start();
+
+    final lines = utf8.decoder.bind(byteStream).transform(const LineSplitter());
+    await for (final line in lines) {
+      if (!line.startsWith('data:')) continue;
+      final raw = line.substring(5).trim();
+      if (raw.isEmpty || raw == '[DONE]') continue;
+
+      final payload = _decodeJsonMap(raw);
+      final delta = payload['delta'] as String? ?? '';
+      if (delta.isNotEmpty) {
+        buffer += delta;
+        final pendingCharacters = buffer.length - lastEmittedLength;
+        if (pendingCharacters >= 512 || emitClock.elapsedMilliseconds >= 120) {
+          lastEmittedLength = buffer.length;
+          emitClock.reset();
+          yield ChatStreamFrame(partialAnswer: buffer);
+        }
+      }
+
+      if (payload['done'] == true &&
+          payload['response'] is Map<String, dynamic>) {
+        finalResponse = ChatResponseModel.fromJson(
+          Map<String, dynamic>.from(payload['response'] as Map),
+        );
+      }
+    }
+
+    final finalAnswer = finalResponse?.answer ?? '';
+    if (buffer.isEmpty && finalAnswer.isNotEmpty) {
+      buffer = finalAnswer;
+    }
+
+    if (buffer.isEmpty) {
+      throw const ApiException('YenkasaAI stream closed without an answer.');
+    }
+
+    yield ChatStreamFrame(
+      partialAnswer: buffer,
+      response: finalResponse,
+      done: true,
+    );
+  }
+
+  ApiException _mapDioError(DioException error) {
+    if (error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.sendTimeout ||
+        error.type == DioExceptionType.receiveTimeout ||
+        error.type == DioExceptionType.connectionError) {
+      return ApiException(
+        'YenkasaAI backend is unreachable at ${AppConfig.aiApiBaseUrl}.',
+        statusCode: error.response?.statusCode,
+      );
+    }
+    final data = error.response?.data;
+    if (data is Map<String, dynamic>) {
+      final detail = data['detail'] ?? data['error'];
+      if (detail is String && detail.isNotEmpty) {
+        return ApiException(detail, statusCode: error.response?.statusCode);
+      }
+    }
+    if (data is String && data.isNotEmpty) {
+      return ApiException(data, statusCode: error.response?.statusCode);
+    }
+    return ApiException(
+      error.message ?? 'YenkasaAI request failed.',
+      statusCode: error.response?.statusCode,
+    );
+  }
+}

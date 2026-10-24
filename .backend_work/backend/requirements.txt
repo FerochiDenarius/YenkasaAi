@@ -1,0 +1,32 @@
+# Runtime and test dependencies for the YenkasaAI FastAPI service.
+# Python: 3.12
+
+fastapi==0.128.8
+pydantic==2.12.5
+uvicorn[standard]==0.39.0
+python-dotenv==1.2.1
+python-multipart==0.0.20
+
+motor==3.7.1
+pymongo==4.18.3
+redis==5.3.1
+rq==1.16.2
+
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.5.0
+
+langchain==0.3.30
+langchain-core==0.3.86
+langchain-community==0.3.31
+langchain-google-vertexai==2.1.2
+langchain-huggingface==0.3.1
+langchain-text-splitters==0.3.11
+chromadb==1.5.9
+sentence-transformers==4.1.0
+google-cloud-storage==2.19.0
+google-auth==2.50.0
+pypdf==5.9.0
+
+# Test dependencies
+pytest==8.4.2
+httpx==0.28.1

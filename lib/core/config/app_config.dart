@@ -1,0 +1,57 @@
+class AppConfig {
+  static const String appName = 'YenkasaAi';
+  static const String environment = String.fromEnvironment(
+    'YENKASA_ENV',
+    defaultValue: 'development',
+  );
+  static const bool isProduction = environment == 'production';
+
+  static const String _productionAiBackendBaseUrl =
+      'https://yenkasa-ai-backend-496173204476.europe-west1.run.app';
+  static const String _productionAuthServerBaseUrl =
+      _productionAiBackendBaseUrl;
+  static const String _productionAiApiBaseUrl = _productionAiBackendBaseUrl;
+  static const String _productionPublicAiEngineBaseUrl =
+      _productionAiBackendBaseUrl;
+  static const String localDebugServerBaseUrl = 'http://127.0.0.1:8008';
+  static const String localDebugAuthServerBaseUrl = localDebugServerBaseUrl;
+  static const String localPublicAiEngineBaseUrl = localDebugServerBaseUrl;
+  static const String localDebugAiApiBaseUrl = localDebugServerBaseUrl;
+  static const String aiApiBaseUrl = String.fromEnvironment(
+    'YENKASA_AI_API_BASE_URL',
+    defaultValue: isProduction
+        ? _productionAiApiBaseUrl
+        : localDebugAiApiBaseUrl,
+  );
+  static const String authApiBaseUrl = String.fromEnvironment(
+    'YENKASA_AUTH_API_BASE_URL',
+    defaultValue: isProduction
+        ? _productionAuthServerBaseUrl
+        : localDebugAuthServerBaseUrl,
+  );
+  static const String publicAiEngineBaseUrl = String.fromEnvironment(
+    'YENKASA_PUBLIC_AI_ENGINE_BASE_URL',
+    defaultValue: isProduction
+        ? _productionPublicAiEngineBaseUrl
+        : localPublicAiEngineBaseUrl,
+  );
+  static const bool allowInsecureAuthFallback = bool.fromEnvironment(
+    'YENKASA_ALLOW_INSECURE_AUTH_FALLBACK',
+    defaultValue: false,
+  );
+  static const Duration requestTimeout = Duration(seconds: 30);
+  static const Duration receiveTimeout = Duration(seconds: 90);
+  static const Duration healthPollInterval = Duration(seconds: 20);
+  static const String defaultAudience = 'public';
+  static const String logoAsset = String.fromEnvironment(
+    'YENKASA_AI_LOGO_ASSET',
+    defaultValue: 'assets/branding/yenkasa_ai_logo.png',
+  );
+
+  static bool get usesUnifiedAiBackend =>
+      authApiBaseUrl.trim() == aiApiBaseUrl.trim() &&
+      aiApiBaseUrl.trim() == publicAiEngineBaseUrl.trim();
+
+  static String get canonicalAuthBackendBaseUrl => authApiBaseUrl.trim();
+  static String get canonicalAiBackendBaseUrl => aiApiBaseUrl.trim();
+}

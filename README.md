@@ -1,102 +1,78 @@
-# YenkasaAi
-YenkasaAI is an African-focused AI platform by Yenkasa Soft-O-Tech, built to power intelligent chat, smart content moderation, creator engagement, media processing, recommendations, automation, and scalable AI services for social networks, e-commerce platforms, digital communities, and next-generation African technology ecosystems.
-
 # YenkasaAI
 
-YenkasaAI is an African-focused AI platform developed by Yenkasa Soft-O-Tech to power intelligent digital experiences across social networking, e-commerce, creator platforms, and online communities.
+YenkasaAI is an African-focused Flutter control-plane application for chat,
+knowledge ingestion, analytics, moderation, session management, and AI
+operations. It is part of the wider Yenkasa ecosystem for social, creator,
+commerce, and community experiences.
 
-The project combines AI-driven chat systems, smart recommendations, media understanding, automation, moderation tools, and scalable cloud infrastructure into one growing ecosystem.
+## Requirements
 
----
+- Flutter/Dart compatible with the SDK constraint in `pubspec.yaml`
+- A running YenkasaAI-compatible backend for authenticated and networked flows
+- Android Studio/Xcode when building mobile targets
 
-## 🚀 Features
+## Run locally
 
-* AI Chat & Assistant Systems
-* Smart Content Moderation
-* Creator Engagement Intelligence
-* Image & Video Processing
-* Recommendation Systems
-* Real-Time APIs
-* Cloud-Ready Architecture
-* Android, Web & Flutter Support
-* Scalable Backend Services
-* Automation & AI Integrations
+```bash
+flutter pub get
+flutter run \
+  --dart-define=YENKASA_ENV=development \
+  --dart-define=YENKASA_AI_API_BASE_URL=http://127.0.0.1:8008 \
+  --dart-define=YENKASA_AUTH_API_BASE_URL=http://127.0.0.1:8008 \
+  --dart-define=YENKASA_PUBLIC_AI_ENGINE_BASE_URL=http://127.0.0.1:8008
+```
 
----
+The development defaults point to `127.0.0.1:8008`. Android emulators usually
+need `10.0.2.2:8008` instead. Use the `--dart-define` values above to select
+the correct host for the target device.
 
-## 🛠 Tech Stack
+## Production builds
 
-### Frontend
+Production API URLs are selected explicitly with `YENKASA_ENV=production`.
+Android release builds also require an ignored `android/key.properties` file;
+the Gradle configuration refuses to produce a release artifact without real
+signing credentials.
 
-* React.js
-* Flutter
-* Kotlin (Android)
+```bash
+flutter build web --release --dart-define=YENKASA_ENV=production
+flutter build apk --release --dart-define=YENKASA_ENV=production
+```
 
-### Backend
+Do not enable `YENKASA_ALLOW_INSECURE_AUTH_FALLBACK` in production. It exists
+only for local troubleshooting when secure storage is unavailable.
 
-* Node.js
-* Express.js
-* Python APIs
+## Development checks
 
-### Database & Cloud
+```bash
+dart format lib test tool
+flutter analyze
+flutter test
+```
 
-* MongoDB
-* Google Cloud
-* DigitalOcean
-* Cloudinary
+GitHub Actions runs these Flutter checks, builds the production web bundle, and
+runs the backend pytest suite on pushes and pull requests.
 
-### AI & Integrations
+## Project structure
 
-* OpenAI APIs
-* Media Processing Tools
-* Notification Systems
-* Real-Time Communication
+- `lib/core`: routing, configuration, storage, networking, and shared widgets
+- `lib/features`: feature-specific presentation, domain, and data code
+- `test`: Flutter unit and widget tests
+- `.backend_work/backend`: bundled backend implementation and its tests
+- `.yme_work` and `.external_staging`: integration/staging source snapshots;
+  keep them documented and do not add credentials to them
+- `docs`: backend wiring and deployment references
 
----
+The backend and staging directories are tracked intentionally for the current
+monorepo workflow. If they become independently deployed services, split them
+into separate repositories or clearly named top-level packages in a follow-up.
 
-## 🌍 Vision
+## Security
 
-YenkasaAI aims to build African-centered AI systems that empower creators, businesses, students, developers, and online communities through intelligent technology solutions.
+See [SECURITY.md](SECURITY.md) for credential and vulnerability-reporting
+guidance. Never commit `.env` files, service-account keys, Android signing
+files, or authentication tokens.
 
----
+## Vision
 
-## 📂 Project Goals
-
-* Build scalable AI infrastructure for Yenkasa platforms
-* Improve creator and community engagement
-* Deliver intelligent automation tools
-* Support AI-powered media experiences
-* Expand AI accessibility within Africa
-
----
-
-## ⚡ Current Ecosystem
-
-* Yenkasa App
-* Yenkasa Store
-* Yenkasa Live Systems
-* Creator Reward Systems
-* AI Media & Recommendation Tools
-
----
-
-## 📌 Status
-
-YenkasaAI is actively under development and continuously evolving with new AI features, integrations, and cloud services.
-
----
-
-## 🤝 Contributing
-
-Contributions, ideas, and collaborations are welcome.
-
----
-
-## 📧 Contact
-
-Yenkasa Soft-O-Tech
-🌐 https://www.yenkasa.xyz
-
----
-
-Built with passion for African innovation 🚀
+YenkasaAI aims to expand accessible, African-centered AI tools for creators,
+businesses, students, developers, and online communities.

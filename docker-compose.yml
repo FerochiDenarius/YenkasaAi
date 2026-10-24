@@ -1,0 +1,85 @@
+services:
+  api:
+    build:
+      context: ./.backend_work/backend
+      dockerfile: Dockerfile
+    image: yenkasa-ai-api:local
+    env_file:
+      - .env
+    environment:
+      MONGODB_URI: ${MONGODB_URI:-mongodb://yenkasa:change-me@mongo:27017/?authSource=admin}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      LOCAL_WORKDIR: /var/lib/yenkasa-ai
+      REPO_ALLOWED_ROOTS: /workspace,/tmp
+    ports:
+      - "${PORT:-8080}:8080"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - yenkasa-data:/var/lib/yenkasa-ai
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid
+
+  worker:
+    image: yenkasa-ai-api:local
+    env_file:
+      - .env
+    environment:
+      MONGODB_URI: ${MONGODB_URI:-mongodb://yenkasa:change-me@mongo:27017/?authSource=admin}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      LOCAL_WORKDIR: /var/lib/yenkasa-ai
+      REPO_ALLOWED_ROOTS: /workspace,/tmp
+    command: ["python", "-m", "app.workers.rq_worker"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - yenkasa-data:/var/lib/yenkasa-ai
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid
+
+  mongo:
+    image: mongo:7.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-yenkasa}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-change-me}
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok' | grep 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  yenkasa-data:
+  mongo-data:
+  redis-data:
